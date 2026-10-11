@@ -150,7 +150,7 @@
 			<!-- What just happened: a bookmark added, or the position moved to match another device. -->
 			<Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasStatus}" Margin="0,4,0,0">
 				<TextBlock Classes="muted" Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
-				<Button Grid.Column="1" Classes="quiet" Content="Undo" Padding="8,2" IsVisible="{Binding CanUndoSync}" Command="{Binding UndoSyncCommand}" />
+				<Button Grid.Column="1" Classes="quiet" Content="Undo" Padding="8,2" IsVisible="{Binding CanUndo}" Command="{Binding UndoCommand}" />
 			</Grid>
 		</StackPanel>
 
@@ -491,11 +491,7 @@
 	</Border>
 
 	<!-- Questions for the listener's own research: after a session, and during a blind trial. -->
-	<!-- Auto-pause when asleep, fading: one quiet line; a tap anywhere on the player keeps listening. -->
-	<Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Padding="12,6" CornerRadius="14"
-		Background="{StaticResource Slate}" IsVisible="{Binding IsFadingForSleep}" IsHitTestVisible="False">
-		<TextBlock Classes="muted" Text="{Binding SleepFadeText}" FontSize="12" TextWrapping="Wrap" />
-	</Border>
+	<!-- Auto-pause when asleep fades without a word on screen; a tap anywhere on the player keeps listening. -->
 	<Border VerticalAlignment="Bottom" Margin="16,0,16,24" Padding="16,14" CornerRadius="12" Background="{StaticResource Slate}"
 		BorderBrush="{StaticResource Lamp}" BorderThickness="1"
 		IsVisible="{Binding IsAskingFollow}">

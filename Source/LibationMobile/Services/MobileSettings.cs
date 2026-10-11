@@ -71,7 +71,7 @@ public class MobileSettings
 		public bool TrainingClimb { get; set; }
 		public bool ShowSyllableRate { get; set; } = true;
 		public bool AskFollowRating { get; set; } = true;
-		public bool AskAlertness { get; set; } = true;
+		public bool AskAlertness { get; set; }
 		public bool VoicePrompts { get; set; }
 		public bool PlayNextInSeries { get; set; } = true;
 		public bool DownloadNextInSeries { get; set; }
@@ -88,6 +88,7 @@ public class MobileSettings
 		UpgradeDefaults();
 		UpgradeProfiles();
 		UpgradeSeriesDownload();
+		UpgradeAlertness();
 		AudioBackend.Nonlinearity = state.Nonlinearity;
 		AudioBackend.UseNonlinear = state.UseNonlinearSpeed;
 		AudioBackend.PauseCap = state.PauseCap;
@@ -133,6 +134,16 @@ public class MobileSettings
 			return;
 		state.DownloadNextInSeries = false;
 		state.DefaultsVersion = 5;
+		Save();
+	}
+
+	/// <summary>2026-10-11: the question at the start of a sitting is off unless asked for: it was found intrusive.</summary>
+	private void UpgradeAlertness()
+	{
+		if (state.DefaultsVersion >= 6)
+			return;
+		state.AskAlertness = false;
+		state.DefaultsVersion = 6;
 		Save();
 	}
 

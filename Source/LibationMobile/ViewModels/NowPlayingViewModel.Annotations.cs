@@ -175,9 +175,10 @@ public partial class NowPlayingViewModel
 
 	public bool HasStatus => StatusMessage is not null;
 
-	/// <summary>Set after the position jumped to the one from another device, until the note about it goes away.</summary>
+	/// <summary>The note under the chapter can be undone, until it goes away: a jump to another device's place, a bookmark.</summary>
 	[ObservableProperty]
-	private bool canUndoSync;
+	private bool canUndo;
+	private Action? undo;
 
 	private AudibleAnnotations? annotations;
 	private LocalAnnotations? localAnnotations;
@@ -259,7 +260,7 @@ public partial class NowPlayingViewModel
 		seekSource = "sync";
 		Seek(remote.Position);
 		SavePosition();
-		ShowStatus($"Moved to {FormatTime(remote.Position)}, where you left off on another device.", canUndoSync: true);
+		ShowStatus($"Moved to {FormatTime(remote.Position)}, where you left off on another device.", UndoSync);
 	}
 
 	/// <summary>
@@ -290,14 +291,20 @@ public partial class NowPlayingViewModel
 		PushPosition();
 	}
 
-	[RelayCommand]
 	private void UndoSync()
 	{
-		if (!CanUndoSync)
-			return;
 		Seek(positionBeforeSync);
 		SavePosition();
 		ShowStatus($"Back at {FormatTime(positionBeforeSync)}.");
+	}
+
+	[RelayCommand]
+	private void Undo()
+	{
+		var action = undo;
+		undo = null;
+		CanUndo = false;
+		action?.Invoke();
 	}
 
 	/// <summary>Send the position to Audible. Failures are ignored: the next one replaces it.</summary>
@@ -329,8 +336,8 @@ public partial class NowPlayingViewModel
 	private void AddBookmark()
 	{
 		var at = Position;
-		SaveAnnotation(at, null);
-		ShowStatus($"Bookmark added at {FormatTime(at)}.");
+		var saved = SaveAnnotation(at, null);
+		ShowStatus($"Bookmark added at {FormatTime(at)}.", () => RemoveBookmark(saved, at));
 	}
 
 	/// <summary>The clip being made, while its editor is open.</summary>
@@ -463,9 +470,9 @@ public partial class NowPlayingViewModel
 
 	private static string? Clean(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
 
-	private void SaveAnnotation(TimeSpan start, TimeSpan? end, string? title = null, string? note = null)
+	private LocalAnnotation? SaveAnnotation(TimeSpan start, TimeSpan? end, string? title = null, string? note = null)
 	{
-		localAnnotations?.Add(Book.Id, start, end, title, note);
+		var saved = localAnnotations?.Add(Book.Id, start, end, title, note);
 		ShowAnnotationRows();
 
 		// Also offer it to Audible's annotation server, which keeps it only for some books.
@@ -481,6 +488,31 @@ public partial class NowPlayingViewModel
 					// Saved on this device regardless.
 				}
 			});
+		return saved;
+	}
+
+	/// <summary>A bookmark just added, taken back: here, and from Audible's server once its copy shows up there.</summary>
+	private void RemoveBookmark(LocalAnnotation? saved, TimeSpan at)
+	{
+		if (saved is not null)
+			localAnnotations?.Remove(Book.Id, saved.Id);
+		ShowAnnotationRows();
+		ShowStatus("Bookmark removed.");
+		if (annotations is not { } service)
+			return;
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				var records = await service.GetServerAnnotationsAsync(Book.Id);
+				foreach (var record in records.Where(r => r is not Clip && IsSame(r.Start, null, at, null)))
+					await service.DeleteFromServerAsync(Book.Id, record);
+			}
+			catch (Exception)
+			{
+				// Offline: only the copy here went.
+			}
+		});
 	}
 
 	[RelayCommand]
@@ -602,16 +634,18 @@ public partial class NowPlayingViewModel
 			_ = SyncPositionAsync();
 	}
 
-	private void ShowStatus(string message, bool canUndoSync = false)
+	private void ShowStatus(string message, Action? undo = null)
 	{
 		StatusMessage = message;
-		CanUndoSync = canUndoSync;
+		this.undo = undo;
+		CanUndo = undo is not null;
 		statusTimer?.Stop();
 		statusTimer = new DispatcherTimer(StatusDuration, DispatcherPriority.Normal, (_, _) =>
 		{
 			statusTimer?.Stop();
 			StatusMessage = null;
-			CanUndoSync = false;
+			undo = null;
+			CanUndo = false;
 		});
 		statusTimer.Start();
 	}
