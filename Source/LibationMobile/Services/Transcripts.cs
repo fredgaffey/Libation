@@ -114,11 +114,6 @@ public class BookTranscripts(string dataDirectory)
 		return lines;
 	}
 
-	public static string FileName(string title)
-	{
-		var name = string.Concat(title.Split(Path.GetInvalidFileNameChars())).Trim();
-		return (name.Length > 0 ? name : "Transcript") + ".txt";
-	}
 
 	/// <summary>The transcript as text: the book's title, then its chapters' headings and paragraphs, each with its time.</summary>
 	public string ToText(string asin, string title, string? author, string? narrator, IReadOnlyList<Chapter> chapters)

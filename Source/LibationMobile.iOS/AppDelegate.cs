@@ -22,6 +22,7 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
 		MediaSession.Platform = mediaSession;
 		HomeWidget.Platform = new AppleHomeWidget(mediaSession);
 		DocumentViewer.Platform = new AppleDocumentViewer();
+		Sharing.Platform = new AppleFileSharer();
 		ListeningContext.Platform = new AppleListeningContext();
 		VoicePrompt.Platform = new AppleVoicePrompt();
 		// Slow voices speak ahead to disk while the phone charges: with the book open, and overnight.

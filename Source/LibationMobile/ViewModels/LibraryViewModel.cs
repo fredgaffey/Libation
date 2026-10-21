@@ -653,6 +653,9 @@ public partial class LibraryViewModel : ObservableObject
 		=> allBooks.FirstOrDefault(b => string.Equals(b.Title, title, StringComparison.CurrentCultureIgnoreCase)
 			&& (b.Author.Contains(authors, StringComparison.CurrentCultureIgnoreCase) || authors.Contains(b.Author, StringComparison.CurrentCultureIgnoreCase)));
 
+	/// <summary>Where a downloaded book's audio file is.</summary>
+	public string BookPath(string asin) => catalog.BookPath(asin);
+
 	public async Task<LocalBook> ToLocalBookAsync(BookItemViewModel item) => new(
 		item.Book.Asin,
 		catalog.BookPath(item.Book.Asin),

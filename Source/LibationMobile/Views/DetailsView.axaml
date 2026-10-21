@@ -50,7 +50,11 @@
 				<Button Classes="quiet" Content="Open the PDF that comes with this book" Margin="24,10,24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,12"
 					IsVisible="{Binding HasPdf}" Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenPdfCommand}" />
 
-				<!-- Speech to text on the phone, saved as a text file with the chapters and times. -->
+				<!-- The book's audio file, to AirDrop, Files or another app. -->
+				<Button Classes="quiet" Content="Share audio file" Margin="24,10,24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,12"
+					IsVisible="{Binding CanShareAudio}" Click="ShareAudio_Click" />
+
+				<!-- Speech to text on the phone, shared as a text file with the chapters and times. -->
 				<Button Classes="quiet" Margin="24,10,24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,12"
 					IsVisible="{Binding CanTranscribe}" Click="Transcript_Click">
 					<TextBlock Text="{Binding TranscriptText}" />

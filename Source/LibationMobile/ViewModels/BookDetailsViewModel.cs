@@ -143,6 +143,7 @@ public partial class BookDetailsViewModel : ObservableObject
 	public BookDetailsViewModel(BookItemViewModel item, AudibleSeries store, LibraryViewModel library, TranscriptJobs transcripts)
 	{
 		Item = item;
+		AudioPath = library.BookPath(item.Book.Asin);
 		Transcripts = transcripts;
 		// Held weakly, as a details page is made for each book shown while the jobs live as long as the app.
 		var page = new WeakReference<BookDetailsViewModel>(this);
@@ -155,9 +156,19 @@ public partial class BookDetailsViewModel : ObservableObject
 				transcripts.PropertyChanged -= changed;
 		};
 		transcripts.PropertyChanged += changed;
-		item.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(BookItemViewModel.State)) TranscriptChanged(); };
+		item.PropertyChanged += (_, e) =>
+		{
+			if (e.PropertyName != nameof(BookItemViewModel.State))
+				return;
+			TranscriptChanged();
+			OnPropertyChanged(nameof(CanShareAudio));
+		};
 		_ = LoadAsync(store, library);
 	}
+
+	/// <summary>The book's audio file, DRM-free, which can be shared once downloaded.</summary>
+	public string AudioPath { get; }
+	public bool CanShareAudio => Item.IsDownloaded;
 
 	/// <summary>A downloaded book can be transcribed, on a device that can.</summary>
 	public bool CanTranscribe => TranscriptJobs.IsSupported && (Item.IsDownloaded || TranscriptDone);
@@ -171,7 +182,7 @@ public partial class BookDetailsViewModel : ObservableObject
 			if (IsTranscribing)
 				return Transcripts.Status ?? $"Stop transcribing ({Transcripts.Fraction:P0})";
 			if (TranscriptDone)
-				return "Save transcript";
+				return "Share transcript";
 			if (Transcripts.Transcripts.HasAny(Item.Book.Asin))
 				return $"Continue transcript ({Transcripts.Done(Item.Book):P0})";
 			return "Make transcript";
@@ -183,7 +194,7 @@ public partial class BookDetailsViewModel : ObservableObject
 	public bool HasTranscriptError => TranscriptError is not null;
 	private string? lastTranscribed;
 
-	/// <summary>Start, stop or carry on transcribing. Saving a finished one is the view's, which has the file picker.</summary>
+	/// <summary>Start, stop or carry on transcribing. Sharing a finished one is the view's.</summary>
 	public void ToggleTranscript()
 	{
 		if (IsTranscribing)
