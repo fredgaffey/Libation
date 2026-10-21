@@ -31,6 +31,8 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
 		Kokoro.KokoroGpu.WatchAppState();
 		DocumentText.Pdf = new ApplePdfReader();
 		BookVoice.Platform = new AppleBookVoice();
+		Transcriber.Platform = new AppleTranscriber();
+		Transcriber.Work = new AppleTranscriptionWork();
 		AudioBackend.Route = AppleAudioRoute.Describe;
 		// Created at launch, so a download that finished while the app was closed is delivered.
 		FileTransfer.Platform = new AppleFileTransfer();

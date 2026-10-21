@@ -89,6 +89,8 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>io.github.freddygaffey.libation.voicing</string>
+		<!-- A transcript carries on after the app leaves the screen, its progress on the lock screen. -->
+		<string>io.github.freddygaffey.libation.transcribe</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>

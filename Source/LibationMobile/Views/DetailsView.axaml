@@ -50,6 +50,13 @@
 				<Button Classes="quiet" Content="Open the PDF that comes with this book" Margin="24,10,24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,12"
 					IsVisible="{Binding HasPdf}" Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenPdfCommand}" />
 
+				<!-- Speech to text on the phone, saved as a text file with the chapters and times. -->
+				<Button Classes="quiet" Margin="24,10,24,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,12"
+					IsVisible="{Binding CanTranscribe}" Click="Transcript_Click">
+					<TextBlock Text="{Binding TranscriptText}" />
+				</Button>
+				<TextBlock Classes="muted" Text="{Binding TranscriptError}" FontSize="13" TextWrapping="Wrap" Margin="24,8,24,0" IsVisible="{Binding HasTranscriptError}" />
+
 				<ProgressBar IsIndeterminate="True" IsVisible="{Binding IsLoading}" Margin="24,24,24,0" Foreground="{StaticResource Lamp}" />
 				<TextBlock Classes="muted" Text="{Binding Message}" FontSize="13" TextWrapping="Wrap" Margin="24,20,24,0"
 					IsVisible="{Binding Message, Converter={x:Static ObjectConverters.IsNotNull}}" />

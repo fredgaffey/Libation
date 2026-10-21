@@ -123,7 +123,7 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 		// Moving between books in a series keeps the way back to where the details were first opened.
 		if (CurrentPage != Page.Details)
 			returnPage = CurrentPage == Page.NowPlaying ? Page.NowPlaying : Page.Library;
-		Details = new BookDetailsViewModel(item, store, Library);
+		Details = new BookDetailsViewModel(item, store, Library, Transcripts);
 		CurrentPage = Page.Details;
 	}
 
@@ -180,6 +180,8 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 	}
 
 	private readonly BookPdfs pdfs;
+	/// <summary>Books transcribed on the device, for the details page.</summary>
+	public TranscriptJobs Transcripts { get; }
 	public Experiments Experiments { get; }
 	public ListeningEvents Events { get; }
 
@@ -238,6 +240,7 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 			headContext.UseHead = settings.UseHeadMovement;
 		Settings.ListeningLog = listeningLog;
 		var catalog = new LibraryCatalog(dataDirectory);
+		Transcripts = new TranscriptJobs(new BookTranscripts(dataDirectory), catalog.BookPath);
 		Library = new LibraryViewModel(catalog, account, new BookDownloader(catalog, settings), settings, annotations, listeningLog, pdfs);
 		catalogForLog = Library;
 		Podcasts = new PodcastsViewModel(new PodcastLibrary(dataDirectory), settings);
@@ -966,6 +969,29 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 				ShowSettings();
 				if (parts.Length > 1)
 					Settings.OpenPageCommand.Execute(parts[1]);
+				break;
+			// transcribe[:ASIN[:fresh]]: transcribe a downloaded book (the shortest, if none is named), without playing it.
+			case "transcribe":
+				{
+					var downloaded = Library.AllDownloaded().Where(b => b.IsDownloaded).OrderBy(b => b.Book.Length).ToList();
+					Console.WriteLine($"LIBATION_TEST transcribe: supported={TranscriptJobs.IsSupported}; downloaded: {string.Join(", ", downloaded.Select(b => $"{b.Book.Asin} {b.Title} ({b.Book.Length:h\\:mm})"))}");
+					if ((parts.Length > 1 && parts[1].Length > 0 ? Library.Find(parts[1]) : downloaded.FirstOrDefault()) is not { IsDownloaded: true } target)
+						break;
+					if (parts.Length > 2 && parts[2] == "fresh")
+						Transcripts.Transcripts.Delete(target.Book.Asin);
+					var watch = System.Diagnostics.Stopwatch.StartNew();
+					var startedAt = Transcripts.Done(target.Book);
+					Transcripts.Start(target.Book);
+					while (Transcripts.Asin is not null)
+					{
+						await Task.Delay(5000);
+						var heard = (Transcripts.Fraction - startedAt) * target.Book.Length.TotalSeconds;
+						Console.WriteLine($"LIBATION_TEST transcribe: {Transcripts.Fraction:P1} {Transcripts.Status} after {watch.Elapsed.TotalSeconds:0}s, {heard / watch.Elapsed.TotalSeconds:0.0}x real time");
+					}
+					var text = await Transcripts.ExportAsync(target.Book);
+					Console.WriteLine($"LIBATION_TEST transcribe: done={Transcripts.Transcripts.IsDone(target.Book.Asin)} status={Transcripts.Status ?? "none"}, {text.Length} chars in {watch.Elapsed.TotalSeconds:0}s");
+					Console.WriteLine(text[..Math.Min(text.Length, 1500)]);
+				}
 				break;
 			case "details" when parts.Length > 1 && Library.Find(parts[1]) is { } detailsBook:
 				ShowDetails(detailsBook);

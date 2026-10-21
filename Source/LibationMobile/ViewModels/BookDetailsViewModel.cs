@@ -138,10 +138,72 @@ public partial class BookDetailsViewModel : ObservableObject
 	[ObservableProperty]
 	private string? message;
 
-	public BookDetailsViewModel(BookItemViewModel item, AudibleSeries store, LibraryViewModel library)
+	public TranscriptJobs Transcripts { get; }
+
+	public BookDetailsViewModel(BookItemViewModel item, AudibleSeries store, LibraryViewModel library, TranscriptJobs transcripts)
 	{
 		Item = item;
+		Transcripts = transcripts;
+		// Held weakly, as a details page is made for each book shown while the jobs live as long as the app.
+		var page = new WeakReference<BookDetailsViewModel>(this);
+		System.ComponentModel.PropertyChangedEventHandler? changed = null;
+		changed = (_, _) =>
+		{
+			if (page.TryGetTarget(out var target))
+				target.TranscriptChanged();
+			else
+				transcripts.PropertyChanged -= changed;
+		};
+		transcripts.PropertyChanged += changed;
+		item.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(BookItemViewModel.State)) TranscriptChanged(); };
 		_ = LoadAsync(store, library);
+	}
+
+	/// <summary>A downloaded book can be transcribed, on a device that can.</summary>
+	public bool CanTranscribe => TranscriptJobs.IsSupported && (Item.IsDownloaded || TranscriptDone);
+	public bool TranscriptDone => Transcripts.Transcripts.IsDone(Item.Book.Asin);
+	public bool IsTranscribing => Transcripts.IsRunning(Item.Book.Asin);
+
+	public string TranscriptText
+	{
+		get
+		{
+			if (IsTranscribing)
+				return Transcripts.Status ?? $"Stop transcribing ({Transcripts.Fraction:P0})";
+			if (TranscriptDone)
+				return "Save transcript";
+			if (Transcripts.Transcripts.HasAny(Item.Book.Asin))
+				return $"Continue transcript ({Transcripts.Done(Item.Book):P0})";
+			return "Make transcript";
+		}
+	}
+
+	/// <summary>Why the last transcript stopped, if it went wrong; shown on its own book's page only.</summary>
+	public string? TranscriptError => Transcripts.Asin is null && Transcripts.Status is { } s && lastTranscribed == Item.Book.Asin ? s : null;
+	public bool HasTranscriptError => TranscriptError is not null;
+	private string? lastTranscribed;
+
+	/// <summary>Start, stop or carry on transcribing. Saving a finished one is the view's, which has the file picker.</summary>
+	public void ToggleTranscript()
+	{
+		if (IsTranscribing)
+			Transcripts.Stop();
+		else if (Transcripts.Asin is null && Item.IsDownloaded)
+		{
+			lastTranscribed = Item.Book.Asin;
+			Transcripts.Start(Item.Book);
+		}
+		TranscriptChanged();
+	}
+
+	private void TranscriptChanged()
+	{
+		OnPropertyChanged(nameof(CanTranscribe));
+		OnPropertyChanged(nameof(TranscriptDone));
+		OnPropertyChanged(nameof(IsTranscribing));
+		OnPropertyChanged(nameof(TranscriptText));
+		OnPropertyChanged(nameof(TranscriptError));
+		OnPropertyChanged(nameof(HasTranscriptError));
 	}
 
 	private async Task LoadAsync(AudibleSeries store, LibraryViewModel library)

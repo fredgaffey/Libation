@@ -65,7 +65,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_ID).intents
         PRODUCT_NAME: LibationIntentsExtension
-  # Lets the app ask WidgetKit to redraw, which only Swift can do.
+  # What the app needs that only Swift can do: asking WidgetKit to redraw, and speech to text (SpeechAnalyzer).
   LibationWidgetBridge:
     type: framework
     platform: iOS
