@@ -10,7 +10,19 @@ namespace LibationMobile.Views;
 
 public partial class ListeningLogView : UserControl
 {
-	public ListeningLogView() => InitializeComponent();
+	public ListeningLogView()
+	{
+		InitializeComponent();
+#if DEBUG
+		// Simulator runs can look further down the page: LIBATION_TEST_SCROLL=900 scrolls that far once it is shown.
+		if (double.TryParse(Environment.GetEnvironmentVariable("LIBATION_TEST_SCROLL"), out var offset))
+			Scroller.LayoutUpdated += (_, _) =>
+			{
+				if (Scroller.Extent.Height > offset && Scroller.Offset.Y == 0)
+					Scroller.Offset = new Avalonia.Vector(0, offset);
+			};
+#endif
+	}
 
 	private async void CopyResearch_Click(object? sender, RoutedEventArgs e)
 	{

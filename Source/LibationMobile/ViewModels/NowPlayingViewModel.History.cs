@@ -94,7 +94,9 @@ public partial class NowPlayingViewModel
 	[RelayCommand]
 	private void JumpToHistory(HistoryPointViewModel point)
 	{
+		endingForJump = true;
 		EndSession();
+		endingForJump = false;
 		seekSource = "history";
 		Seek(point.Position);
 		IsHistoryOpen = false;
@@ -102,7 +104,7 @@ public partial class NowPlayingViewModel
 
 	private void RefreshHistory()
 	{
-		var sessions = (log?.Sessions ?? []).Where(s => s.BookId == Book.Id && s.Started != sessionStarted)
+		var sessions = ListeningLog.Joined((log?.Sessions ?? []).Where(s => s.BookId == Book.Id && s.Started != sessionStarted), SessionResumeGap)
 			.OrderByDescending(s => s.Started)
 			.Select(s => new HistorySessionViewModel(s, isCurrent: false));
 		History = (CurrentSession() is { } current ? sessions.Prepend(new HistorySessionViewModel(current, isCurrent: true)) : sessions).ToList();

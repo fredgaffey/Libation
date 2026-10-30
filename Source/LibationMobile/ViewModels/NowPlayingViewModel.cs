@@ -417,12 +417,23 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 		}
 		lastListeningTick = listening ? now : null;
 
-		if (listening && sessionStarted is null)
+		if (listening && sessionStarted is null && pausedSession is { } paused && DateTimeOffset.Now - paused.Ended < SessionResumeGap)
+		{
+			// Back from a short pause: the same session carries on, rather than the log filling with two-minute pieces.
+			sessionStarted = paused.Started;
+			sessionFrom = paused.From;
+			sessionSpent = paused.Spent;
+			sessionBookTime = paused.BookTime;
+			sessionSyllables = paused.Syllables;
+			pausedSession = null;
+		}
+		else if (listening && sessionStarted is null)
 		{
 			sessionStarted = DateTimeOffset.Now;
 			sessionFrom = Position;
 			sessionSpent = sessionBookTime = TimeSpan.Zero;
 			sessionSyllables = 0;
+			pausedSession = null;
 			StartMarks();
 			StartTraining();
 			StartCheckIns();
@@ -443,6 +454,13 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 	private double sessionSyllables;
 	/// <summary>Shorter stretches, such as checking where a chapter starts, are not worth a line in the log.</summary>
 	private static readonly TimeSpan ShortestLoggedSession = TimeSpan.FromSeconds(30);
+	/// <summary>Playing again within this long of a pause continues the session it paused.</summary>
+	internal static readonly TimeSpan SessionResumeGap = TimeSpan.FromMinutes(5);
+	/// <summary>The session last paused, kept for <see cref="SessionResumeGap"/> in case listening carries on.</summary>
+	private (DateTimeOffset Started, DateTimeOffset Ended, TimeSpan From, TimeSpan Spent, TimeSpan BookTime, double Syllables)? pausedSession;
+
+	/// <summary>Set while ending a session on purpose, so it is not continued.</summary>
+	private bool endingForJump;
 
 	private void EndSession()
 	{
@@ -454,6 +472,9 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 			log?.Add(new ListeningSession(Book.Id, Title, started, DateTimeOffset.Now, sessionFrom, Position,
 				sessionBookTime.TotalSeconds, sessionSpent.TotalSeconds, (float)Speed, sessionMarks.Count > 0 ? sessionMarks.ToList() : null,
 				sessionSyllables > 0 ? Math.Round(sessionSyllables) : null, asleep?.At, asleep?.Position, asleep is null ? null : "auto-pause"));
+		// A pause for sleep, or one from jumping elsewhere in the book through its history, is a real end.
+		pausedSession = sessionStarted is DateTimeOffset s && asleep is null && !endingForJump
+			? (s, DateTimeOffset.Now, sessionFrom, sessionSpent, sessionBookTime, sessionSyllables) : null;
 		sessionStarted = null;
 	}
 

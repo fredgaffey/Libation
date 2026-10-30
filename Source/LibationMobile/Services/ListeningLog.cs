@@ -34,7 +34,11 @@ public record ListeningSession(
 	TimeSpan? AsleepPosition = null,
 	string? AsleepSource = null)
 {
-	/// <summary>Where in the book the listener was at a moment in the session, from the marks taken every few minutes.</summary>
+	/// <summary>Book time over real time: the speed across the whole session, which <see cref="Speed"/>, the speed at its end, may not be.</summary>
+	[JsonIgnore]
+	public double AverageSpeed => SpentSeconds > 0 && BookSeconds > 0 ? BookSeconds / SpentSeconds : Speed;
+
+	/// <summary>Where in the book the listener was in the session, from the marks taken every few minutes.</summary>
 	public TimeSpan PositionAt(DateTimeOffset at)
 	{
 		var points = new List<ListeningMark> { new(Started, From) };
@@ -90,6 +94,38 @@ public class ListeningLog
 			File.WriteAllText(temp, JsonSerializer.Serialize(sessions, ListeningLogJsonContext.Default.ListListeningSession));
 			File.Move(temp, path, overwrite: true);
 		}
+	}
+
+	/// <summary>
+	/// Sessions with pauses of under <paramref name="gap"/> between them, in the same book, as one: before short pauses
+	/// carried a session on, every pause began a new one, and a sitting was logged as a string of two-minute pieces.
+	/// </summary>
+	public static IReadOnlyList<ListeningSession> Joined(IEnumerable<ListeningSession> sessions, TimeSpan gap)
+	{
+		var joined = new List<ListeningSession>();
+		foreach (var s in sessions.OrderBy(s => s.Started))
+		{
+			if (joined.Count > 0 && joined[^1] is var last && last.BookId == s.BookId && s.Started - last.Ended < gap && s.Started >= last.Started)
+			{
+				var marks = (last.Marks ?? []).Append(new ListeningMark(last.Ended, last.To)).Concat(s.Marks ?? []).ToList();
+				joined[^1] = last with
+				{
+					Ended = s.Ended,
+					To = s.To,
+					BookSeconds = last.BookSeconds + s.BookSeconds,
+					SpentSeconds = last.SpentSeconds + s.SpentSeconds,
+					Speed = s.Speed,
+					Marks = marks,
+					Syllables = last.Syllables is null && s.Syllables is null ? null : (last.Syllables ?? 0) + (s.Syllables ?? 0),
+					AsleepAt = last.AsleepAt ?? s.AsleepAt,
+					AsleepPosition = last.AsleepPosition ?? s.AsleepPosition,
+					AsleepSource = last.AsleepSource ?? s.AsleepSource,
+				};
+			}
+			else
+				joined.Add(s);
+		}
+		return joined;
 	}
 
 	public void Clear()

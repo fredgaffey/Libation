@@ -1,5 +1,7 @@
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using LibationMobile.Controls;
 using LibationMobile.Services;
 using System;
 using System.Collections.Generic;
@@ -18,6 +20,8 @@ public class LogEntryViewModel(ListeningSession session)
 		$"{Describe(TimeSpan.FromSeconds(session.SpentSeconds))} at {session.Speed:0.0}×, heard {Describe(TimeSpan.FromSeconds(session.BookSeconds))} " +
 		$"({NowPlayingViewModel.FormatTime(session.From)} to {NowPlayingViewModel.FormatTime(session.To)})" +
 		(session.Syllables is > 0 && session.SpentSeconds > 0 ? $", {session.Syllables / session.SpentSeconds:0} syllables a second" : "");
+	/// <summary>The session's speed as a colour, as on its day's timeline.</summary>
+	public IBrush SpeedBrush { get; } = new SolidColorBrush(DayTimeline.SpeedColor(session.AverageSpeed));
 
 	internal static string Describe(TimeSpan time)
 		=> time.TotalHours >= 1 ? $"{(int)time.TotalHours} h {time.Minutes} min" : time.TotalMinutes >= 1 ? $"{(int)time.TotalMinutes} min" : $"{time.Seconds} s";
@@ -30,6 +34,11 @@ public class LogDayViewModel(DateTime day, IReadOnlyList<ListeningSession> sessi
 	public string TotalText { get; } =
 		$"{LogEntryViewModel.Describe(TimeSpan.FromSeconds(sessions.Sum(s => s.SpentSeconds)))} listening, {LogEntryViewModel.Describe(TimeSpan.FromSeconds(sessions.Sum(s => s.BookSeconds)))} of books";
 	public IReadOnlyList<LogEntryViewModel> Entries { get; } = sessions.OrderByDescending(s => s.Started).Select(s => new LogEntryViewModel(s)).ToList();
+	/// <summary>The day's sessions on a midnight-to-midnight track; one running past midnight stops at the edge.</summary>
+	public IReadOnlyList<TimelineBlock> Blocks { get; } = sessions
+		.Select(s => (From: (s.Started.ToLocalTime().DateTime - day).TotalHours, s))
+		.Select(b => new TimelineBlock(b.From, Math.Min(24, b.From + (b.s.Ended - b.s.Started).TotalHours), b.s.AverageSpeed))
+		.ToList();
 }
 
 /// <summary>Listening in Audible's app and in Libation: real (wall-clock) time, book time heard, and time saved against 1x.</summary>
@@ -168,6 +177,124 @@ public partial class ListeningLogViewModel : ObservableObject
 
 	#endregion
 
+	#region Heat maps
+
+	/// <summary>How many weeks the calendar covers, a column each.</summary>
+	private const int CALENDAR_WEEKS = 26;
+
+	/// <summary>Minutes listened each day in either app, a column a week from Monday; NaN for days still to come.</summary>
+	[ObservableProperty]
+	private IReadOnlyList<double> calendarValues = [];
+
+	/// <summary>The month's name over the first week of each month.</summary>
+	[ObservableProperty]
+	private IReadOnlyList<string> calendarColumns = [];
+
+	public static IReadOnlyList<string> WeekdayLabels { get; } = ["M", "", "W", "", "F", "", "S"];
+
+	/// <summary>The calendar day tapped, as an index into <see cref="CalendarValues"/>; -1 for none.</summary>
+	[ObservableProperty]
+	private int selectedCalendarDay = -1;
+
+	[ObservableProperty]
+	private string calendarDetail = "";
+
+	/// <summary>Minutes listened in Libation by weekday and hour, a column an hour: when listening happens.</summary>
+	[ObservableProperty]
+	private IReadOnlyList<double> hourValues = [];
+
+	public static IReadOnlyList<string> HourLabels { get; } = Enumerable.Range(0, 24)
+		.Select(h => h % 6 != 0 ? "" : h == 0 ? "12a" : h == 12 ? "12p" : h < 12 ? $"{h}a" : $"{h - 12}p").ToList();
+
+	[ObservableProperty]
+	private int selectedHour = -1;
+
+	[ObservableProperty]
+	private string hourDetail = "";
+
+	private DateTime calendarStart;
+	private Func<DateTime, (double Audible, double Libation)> minutesOn = _ => (0, 0);
+	private IReadOnlyList<ListeningSession> heatSessions = [];
+
+	partial void OnSelectedCalendarDayChanged(int value) => DescribeCalendarDay();
+
+	partial void OnSelectedHourChanged(int value) => DescribeHour();
+
+	private static int Weekday(DateTime day) => ((int)day.DayOfWeek + 6) % 7;
+
+	private void BuildHeatMaps(IReadOnlyList<ListeningSession> sessions, Func<DateTime, (double Audible, double Libation)> minutes)
+	{
+		heatSessions = sessions;
+		minutesOn = minutes;
+		var today = DateTime.Today;
+		calendarStart = today.AddDays(-Weekday(today) - 7 * (CALENDAR_WEEKS - 1));
+		CalendarValues = Enumerable.Range(0, CALENDAR_WEEKS * 7).Select(i => calendarStart.AddDays(i))
+			.Select(d => d > today ? double.NaN : minutes(d) is var m ? m.Audible + m.Libation : 0).ToList();
+		CalendarColumns = Enumerable.Range(0, CALENDAR_WEEKS).Select(w => calendarStart.AddDays(7 * w))
+			.Select(monday => monday.Day <= 7 ? monday.ToString("MMM", CultureInfo.CurrentCulture) : "").ToList();
+
+		// Each session spread over the hours it ran through, by the share of it in each.
+		var hours = new double[7 * 24];
+		foreach (var s in sessions)
+		{
+			var start = s.Started.ToLocalTime().DateTime;
+			var end = s.Ended.ToLocalTime().DateTime;
+			var wall = (end - start).TotalMinutes;
+			if (wall <= 0)
+				continue;
+			var perMinute = s.SpentSeconds / 60 / wall;
+			for (var t = start; t < end;)
+			{
+				var next = new DateTime(t.Year, t.Month, t.Day, t.Hour, 0, 0).AddHours(1);
+				var stop = next < end ? next : end;
+				hours[t.Hour * 7 + Weekday(t.Date)] += (stop - t).TotalMinutes * perMinute;
+				t = stop;
+			}
+		}
+		HourValues = hours;
+		DescribeCalendarDay();
+		DescribeHour();
+	}
+
+	private void DescribeCalendarDay()
+	{
+		var total = CalendarValues.Where(v => !double.IsNaN(v)).ToList();
+		if (SelectedCalendarDay < 0 || SelectedCalendarDay >= CalendarValues.Count)
+		{
+			var days = total.Count(v => v >= 1);
+			CalendarDetail = $"Listened on {days} of the last {total.Count} days. Tap a day for its figures.";
+			return;
+		}
+		var day = calendarStart.AddDays(SelectedCalendarDay);
+		var (audible, libation) = minutesOn(day);
+		var name = day == DateTime.Today ? "Today" : day == DateTime.Today.AddDays(-1) ? "Yesterday" : day.ToString("dddd d MMMM", CultureInfo.CurrentCulture);
+		var sessions = heatSessions.Where(s => s.Started.ToLocalTime().Date == day).ToList();
+		var speed = sessions.Sum(s => s.SpentSeconds) is > 0 and var spent ? sessions.Sum(s => s.BookSeconds) / spent : 0;
+		CalendarDetail = audible + libation < 1 ? $"{name}: no listening."
+			: $"{name}: {Hours((audible + libation) / 60)}"
+				+ (libation >= 1 ? $", {Hours(libation / 60)} in Libation over {sessions.Count} session{(sessions.Count == 1 ? "" : "s")} at {speed:0.0}×" : "")
+				+ (audible >= 1 ? $", {Hours(audible / 60)} in the Audible app" : "") + ".";
+	}
+
+	private void DescribeHour()
+	{
+		if (SelectedHour < 0 || SelectedHour >= HourValues.Count)
+		{
+			var busiest = HourValues.Select((v, i) => (v, i)).MaxBy(p => p.v);
+			HourDetail = busiest.v < 1 ? "When you listen in Libation shows here."
+				: $"Most listening is on {DayName(busiest.i % 7)}s around {HourName(busiest.i / 7)}. Tap an hour for its figures.";
+			return;
+		}
+		var minutes = HourValues[SelectedHour];
+		HourDetail = $"{DayName(SelectedHour % 7)}s, {HourName(SelectedHour / 7)} to {HourName((SelectedHour / 7 + 1) % 24)}: {Hours(minutes / 60)} in all.";
+	}
+
+	private static string DayName(int weekday) => CultureInfo.CurrentCulture.DateTimeFormat.GetDayName((DayOfWeek)((weekday + 1) % 7));
+
+	private static string HourName(int hour) => hour == 0 ? "midnight" : hour == 12 ? "noon" : hour < 12 ? $"{hour} am" : $"{hour - 12} pm";
+
+	#endregion
+
 	/// <summary>How many pages back from now: 1 is the 30 days or 12 months before the latest.</summary>
 	[ObservableProperty]
 	[NotifyPropertyChangedFor(nameof(CanGoNewer))]
@@ -274,7 +401,7 @@ public partial class ListeningLogViewModel : ObservableObject
 	/// <summary>Show what is on the phone at once, then fetch Audible's figures if they are over an hour old.</summary>
 	public void Refresh()
 	{
-		Days = log.Sessions
+		Days = ListeningLog.Joined(log.Sessions, NowPlayingViewModel.SessionResumeGap)
 			.GroupBy(s => s.Started.ToLocalTime().Date)
 			.OrderByDescending(g => g.Key)
 			.Select(g => new LogDayViewModel(g.Key, g.ToList()))
@@ -390,6 +517,8 @@ public partial class ListeningLogViewModel : ObservableObject
 			new(syllablesPerSecond is double sps ? $"{sps:0}" : "–", "syllables a second"),
 		];
 
+		BuildHeatMaps(sessions, d => (AudibleDay(d) * 60, localByDay.GetValueOrDefault(d) * 60));
+
 		// Chart: 30 days or 12 months, oldest first, paged back through the history; or every year.
 		double AudibleYear(int year) => stats?.MonthlyMs.Where(m => m.Key.StartsWith(year.ToString(CultureInfo.InvariantCulture))).Sum(m => m.Value) / 3.6e6 ?? 0;
 		double LocalYear(int year) => localByDay.Where(d => d.Key.Year == year).Sum(d => d.Value);
@@ -452,9 +581,24 @@ public partial class ListeningLogViewModel : ObservableObject
 	private static string Hours(double hours)
 		=> hours >= 100 ? $"{hours:N0} h" : hours >= 1 ? $"{(int)hours} h {(int)(hours % 1 * 60)} m" : $"{Math.Round(hours * 60)} m";
 
+	/// <summary>Clear has been tapped once: the next tap clears. Clearing cannot be undone, so one tap is never enough.</summary>
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(ClearText))]
+	private bool isConfirmingClear;
+
+	public string ClearText => IsConfirmingClear ? "Tap again to clear" : "Clear";
+
 	[RelayCommand]
-	private void ClearLog()
+	private async Task ClearLog()
 	{
+		if (!IsConfirmingClear)
+		{
+			IsConfirmingClear = true;
+			await Task.Delay(TimeSpan.FromSeconds(4));
+			IsConfirmingClear = false;
+			return;
+		}
+		IsConfirmingClear = false;
 		log.Clear();
 		Refresh();
 	}
