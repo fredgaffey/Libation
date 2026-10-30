@@ -9,7 +9,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- The icon set in Assets.xcassets. Rendered from LibationMobile/Icon/icon.svg by render-icons.sh. -->
     <AppIcon>AppIcon</AppIcon>
-    <ApplicationId>io.github.freddygaffey.libationmobile</ApplicationId>
+    <ApplicationId>io.github.freddygaffey.libation</ApplicationId>
     <ApplicationTitle>Libation</ApplicationTitle>
     <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>

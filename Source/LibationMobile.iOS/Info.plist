@@ -5,7 +5,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>Libation</string>
 	<key>CFBundleIdentifier</key>
-	<string>io.github.freddygaffey.libationmobile</string>
+	<string>io.github.freddygaffey.libation</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1</string>
 	<key>CFBundleVersion</key>
