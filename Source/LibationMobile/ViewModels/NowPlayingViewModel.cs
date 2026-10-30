@@ -153,6 +153,8 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 				AdjustTraining(value);
 			else
 			{
+				// Set by hand: the listener has taken over from any warm-up.
+				EndWarmUp();
 				ApplySpeed(value, save: true);
 				RetargetRate();
 			}
@@ -239,6 +241,7 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 		Update();
 		StartAnnotations(annotations, localAnnotations);
 		StartMediaSession();
+		UpdateRampText();
 	}
 
 	/// <param name="annotations">Position sync with Audible. Null plays without syncing.</param>
@@ -408,6 +411,7 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 		{
 			TrainingTick(now - last);
 			TrialTick(now - last);
+			RampTick(now - last);
 			uncountedTimeSpent += now - last;
 			uncountedBookTime += (now - last) * Speed;
 			sessionSpent += now - last;
@@ -438,6 +442,7 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 			StartMarks();
 			StartTraining();
 			StartCheckIns();
+			StartWarmUp();
 		}
 		else if (!listening && sessionStarted is not null)
 			EndSession();

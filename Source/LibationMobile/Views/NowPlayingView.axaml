@@ -208,10 +208,11 @@
 				</Grid>
 			</Border>
 			<WrapPanel HorizontalAlignment="Center">
-				<Button Classes="chip" Command="{Binding OpenSheetCommand}" CommandParameter="profile">
+				<!-- The listening mode: a warm-up each sitting and slow progress, or the training plans when those are on. -->
+				<Button Classes="chip" Classes.on="{Binding IsRampOn}" Command="{Binding OpenSheetCommand}" CommandParameter="listen" IsVisible="{Binding !IsModeOn}">
 					<StackPanel Orientation="Horizontal" Spacing="5">
-						<TextBlock Text="{Binding ProfileText}" FontSize="14" />
-						<PathIcon Data="{StaticResource IconChevronDown}" Width="11" Height="11" />
+						<PathIcon Data="{StaticResource IconTraining}" Width="14" Height="14" />
+						<TextBlock Text="{Binding RampChipText}" FontSize="14" />
 					</StackPanel>
 				</Button>
 				<Button Classes="chip" Classes.on="{Binding IsSleepTimerOn}" Command="{Binding OpenSheetCommand}" CommandParameter="sleep">
@@ -220,7 +221,7 @@
 						<TextBlock Text="{Binding SleepTimerText}" FontSize="14" />
 					</StackPanel>
 				</Button>
-				<Button Classes="chip" Classes.on="{Binding IsModeOn}" Command="{Binding OpenSheetCommand}" CommandParameter="mode">
+				<Button Classes="chip" Classes.on="{Binding IsModeOn}" Command="{Binding OpenSheetCommand}" CommandParameter="mode" IsVisible="{Binding IsModeOn}">
 					<StackPanel Orientation="Horizontal" Spacing="5">
 						<PathIcon Data="{StaticResource IconTraining}" Width="14" Height="14" />
 						<TextBlock Text="{Binding ModeChipText}" FontSize="14" />
@@ -360,11 +361,62 @@
 				</StackPanel>
 			</ScrollViewer>
 		</Border>
+		<Border Classes="sheet" IsVisible="{Binding IsListenSheet}">
+			<ScrollViewer MaxHeight="620">
+				<StackPanel Spacing="12" Margin="20,10,20,24">
+					<Border Width="40" Height="4" CornerRadius="2" Background="{StaticResource Hairline}" HorizontalAlignment="Center" />
+					<TextBlock Text="Listening" FontFamily="{StaticResource DisplayFont}" FontSize="22" />
+					<TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+						Text="Works on your syllable rate when following the narrator, otherwise on your speed. Nothing to answer: skipping back is the only sign it reads." />
+					<Grid ColumnDefinitions="*,Auto">
+						<StackPanel>
+							<TextBlock Text="Warm up each sitting" FontSize="15" />
+							<TextBlock Classes="muted" Text="Start a little slower after a break, and ease up to your speed." FontSize="12" TextWrapping="Wrap" />
+						</StackPanel>
+						<ToggleSwitch Grid.Column="1" IsChecked="{Binding WarmUpEnabled}" OnContent="" OffContent="" Margin="12,0,0,0" />
+					</Grid>
+					<Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding WarmUpEnabled}">
+						<TextBlock Text="{Binding WarmUpPercentText}" FontSize="14" Foreground="{StaticResource Lamp}" VerticalAlignment="Center" />
+						<Button Grid.Column="1" Classes="quiet" Content="−" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="percent-" />
+						<Button Grid.Column="2" Classes="quiet" Content="+" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="percent+" />
+					</Grid>
+					<Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding WarmUpEnabled}">
+						<TextBlock Text="{Binding WarmUpMinutesText}" FontSize="14" Foreground="{StaticResource Lamp}" VerticalAlignment="Center" />
+						<Button Grid.Column="1" Classes="quiet" Content="−" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="minutes-" />
+						<Button Grid.Column="2" Classes="quiet" Content="+" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="minutes+" />
+					</Grid>
+					<Border Height="1" Background="{StaticResource Hairline}" />
+					<Grid ColumnDefinitions="*,Auto">
+						<StackPanel>
+							<TextBlock Text="Get faster gradually" FontSize="15" />
+							<TextBlock Classes="muted" Text="A small step up after each hour with few skips back; down a step after many." FontSize="12" TextWrapping="Wrap" />
+						</StackPanel>
+						<ToggleSwitch Grid.Column="1" IsChecked="{Binding ProgressEnabled}" OnContent="" OffContent="" Margin="12,0,0,0" />
+					</Grid>
+					<Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ProgressEnabled}">
+						<TextBlock Text="{Binding ProgressCeilingText}" FontSize="14" Foreground="{StaticResource Lamp}" VerticalAlignment="Center" />
+						<Button Grid.Column="1" Classes="quiet" Content="−" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="ceiling-" />
+						<Button Grid.Column="2" Classes="quiet" Content="+" Padding="16,4" Command="{Binding NudgeRampCommand}" CommandParameter="ceiling+" />
+					</Grid>
+					<TextBlock Text="{Binding RampStatusText}" FontSize="13" Foreground="{StaticResource Lamp}" TextWrapping="Wrap"
+						IsVisible="{Binding RampStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+					<Border Height="1" Background="{StaticResource Hairline}" />
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<Button Classes="quiet" Padding="10,6" Content="Research tools" Command="{Binding OpenSheetCommand}" CommandParameter="mode" />
+						<Button Classes="quiet" Padding="10,6" Command="{Binding OpenSheetCommand}" CommandParameter="profile">
+							<TextBlock><Run Text="Sound: " /><Run Text="{Binding ProfileText}" Foreground="{StaticResource Lamp}" /></TextBlock>
+						</Button>
+					</StackPanel>
+				</StackPanel>
+			</ScrollViewer>
+		</Border>
 		<Border Classes="sheet" IsVisible="{Binding IsModeSheet}">
 			<ScrollViewer MaxHeight="620">
 				<StackPanel Spacing="12" Margin="20,10,20,24">
 					<Border Width="40" Height="4" CornerRadius="2" Background="{StaticResource Hairline}" HorizontalAlignment="Center" />
-					<TextBlock Text="Training" FontFamily="{StaticResource DisplayFont}" FontSize="22" />
+					<TextBlock Text="Research tools" FontFamily="{StaticResource DisplayFont}" FontSize="22" />
+					<TextBlock Classes="muted" FontSize="12" TextWrapping="Wrap"
+						Text="Training plans in timed blocks, blind training and blind trials, for testing what works. For everyday listening, use Listening's warm-up and progress instead." />
 					<TextBlock Text="Mode" FontSize="13" Foreground="{StaticResource Dust}" />
 					<UniformGrid Columns="3">
 						<ToggleButton Content="You choose" IsChecked="{Binding IsNormalMode, Mode=OneWay}" Command="{Binding SetListeningModeCommand}" CommandParameter="normal" Padding="6,8" Margin="0,0,4,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />

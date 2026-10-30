@@ -993,6 +993,12 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 						np.SaveAnnotationEditCommand.Execute(null);
 						np.ShowAnnotationsCommand.Execute(null);
 					}
+					else if (parts[1] == "listen")
+					{
+						np.WarmUpEnabled = true;
+						np.ProgressEnabled = true;
+						np.OpenSheetCommand.Execute("listen");
+					}
 					else if (parts[1] == "clip")
 					{
 						np.AddClipCommand.Execute(null);

@@ -115,8 +115,9 @@ public partial class NowPlayingViewModel
 			return;
 		if (player.SourceSpeechRate is not double rate || rate < 1)
 			return;
-		var wanted = Math.Clamp(settings.TargetSyllableRate / rate, MIN_SPEED, MAX_SPEED);
-		if (Math.Abs(wanted - Speed) < (now ? 0.05 : TargetRateDeadband))
+		var wanted = Math.Clamp(TargetRateNow / rate, MIN_SPEED, MAX_SPEED);
+		// Warming up moves in small steps, so the climb is smooth rather than in jumps.
+		if (Math.Abs(wanted - Speed) < (now || IsWarmingUp ? 0.05 : TargetRateDeadband))
 			return;
 		if (!now)
 			wanted = Speed + Math.Clamp(wanted - Speed, -TargetRateMaxStep, TargetRateMaxStep);

@@ -53,6 +53,14 @@ public class MobileSettings
 		public bool UseHeadMovement { get; set; } = true;
 		/// <summary>When each downloaded book's download was asked for, so a new download sorts as just listened to.</summary>
 		public Dictionary<string, DateTimeOffset> DownloadTimes { get; set; } = new();
+		public bool WarmUp { get; set; }
+		public float WarmUpPercent { get; set; } = 20f;
+		public float WarmUpMinutes { get; set; } = 3f;
+		public bool Progress { get; set; }
+		public double ProgressSeconds { get; set; }
+		public int ProgressSkipsBack { get; set; }
+		public float ProgressCeilingRate { get; set; } = 28f;
+		public float ProgressCeilingSpeed { get; set; } = 8f;
 		public bool Training { get; set; }
 		public float TrainingStartSpeed { get; set; } = 3.5f;
 		public bool TrainingFromBelow { get; set; } = true;
@@ -448,6 +456,68 @@ public class MobileSettings
 	#endregion
 
 	#region Speed listening
+
+	/// <summary>
+	/// Each new sitting starts <see cref="WarmUpPercent"/> slower and eases up to the listener's speed, or syllable rate,
+	/// over <see cref="WarmUpMinutes"/> of listening. Adaptation to fast speech builds within minutes and fades between
+	/// sittings, so the first minutes at full speed are the hardest; the warm-up takes that edge off without asking anything.
+	/// </summary>
+	public bool WarmUp
+	{
+		get { lock (locker) return state.WarmUp; }
+		set { lock (locker) { state.WarmUp = value; Save(); } }
+	}
+
+	public float WarmUpPercent
+	{
+		get { lock (locker) return state.WarmUpPercent; }
+		set { lock (locker) { state.WarmUpPercent = Math.Clamp(value, 5f, 50f); Save(); } }
+	}
+
+	public float WarmUpMinutes
+	{
+		get { lock (locker) return state.WarmUpMinutes; }
+		set { lock (locker) { state.WarmUpMinutes = Math.Clamp(value, 1f, 15f); Save(); } }
+	}
+
+	/// <summary>
+	/// After each hour of listening with few skips back, the syllable rate (or, when not following the narrator, the speed)
+	/// goes up a small step; many skips back take it down one. Slow enough to go unnoticed, it moves the comfortable speed
+	/// up over weeks, as daily use moves blind listeners' speeds.
+	/// </summary>
+	public bool Progress
+	{
+		get { lock (locker) return state.Progress; }
+		set { lock (locker) { state.Progress = value; Save(); } }
+	}
+
+	/// <summary>Listening counted towards the next step, in seconds.</summary>
+	public double ProgressSeconds
+	{
+		get { lock (locker) return state.ProgressSeconds; }
+		set { lock (locker) { state.ProgressSeconds = Math.Max(0, value); Save(); } }
+	}
+
+	/// <summary>Skips back in that listening: a sign of missing things.</summary>
+	public int ProgressSkipsBack
+	{
+		get { lock (locker) return state.ProgressSkipsBack; }
+		set { lock (locker) { state.ProgressSkipsBack = Math.Max(0, value); Save(); } }
+	}
+
+	/// <summary>Progress stops at this many syllables a second; blind expert listeners report about 20 to 25.</summary>
+	public float ProgressCeilingRate
+	{
+		get { lock (locker) return state.ProgressCeilingRate; }
+		set { lock (locker) { state.ProgressCeilingRate = Math.Clamp(value, 8f, 40f); Save(); } }
+	}
+
+	/// <summary>Progress stops at this speed, when not following the narrator.</summary>
+	public float ProgressCeilingSpeed
+	{
+		get { lock (locker) return state.ProgressCeilingSpeed; }
+		set { lock (locker) { state.ProgressCeilingSpeed = Math.Clamp(value, 1.5f, 10f); Save(); } }
+	}
 
 	/// <summary>
 	/// Training mode: each session starts <see cref="TrainingStartBelow"/> under the book's speed and rises by

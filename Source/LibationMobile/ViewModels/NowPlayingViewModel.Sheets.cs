@@ -13,15 +13,17 @@ namespace LibationMobile.ViewModels;
 /// </summary>
 public partial class NowPlayingViewModel
 {
-	/// <summary>"" for none, else "speed", "profile", "mode", "sleep" or "more".</summary>
+	/// <summary>"" for none, else "speed", "listen", "profile", "mode", "sleep" or "more".</summary>
 	[ObservableProperty]
-	[NotifyPropertyChangedFor(nameof(IsSheetOpen), nameof(IsSpeedSheet), nameof(IsProfileSheet), nameof(IsModeSheet), nameof(IsSleepSheet), nameof(IsMoreSheet))]
+	[NotifyPropertyChangedFor(nameof(IsSheetOpen), nameof(IsSpeedSheet), nameof(IsProfileSheet), nameof(IsModeSheet), nameof(IsListenSheet), nameof(IsSleepSheet), nameof(IsMoreSheet))]
 	private string sheet = "";
 
 	public bool IsSheetOpen => Sheet.Length > 0;
 	public bool IsSpeedSheet => Sheet == "speed";
 	public bool IsProfileSheet => Sheet == "profile";
 	public bool IsModeSheet => Sheet == "mode";
+	/// <summary>The listening mode: warm-up and progress. The training plans' sheet ("mode") is reached from it.</summary>
+	public bool IsListenSheet => Sheet == "listen";
 	public bool IsSleepSheet => Sheet == "sleep";
 	public bool IsMoreSheet => Sheet == "more";
 

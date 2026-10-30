@@ -60,7 +60,10 @@ public partial class NowPlayingViewModel
 		if (sessionStarted is null)
 			return;
 		if (kind == "skip" && value < 0)
+		{
 			sessionSkipsBack++;
+			NoteProgressSkipBack();
+		}
 		else if (kind == "speed" && value is double speed)
 		{
 			sessionSpeedChanges++;
