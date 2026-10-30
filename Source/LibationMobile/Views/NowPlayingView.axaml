@@ -150,7 +150,10 @@
 			<!-- What just happened: a bookmark added, or the position moved to match another device. -->
 			<Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasStatus}" Margin="0,4,0,0">
 				<TextBlock Classes="muted" Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
-				<Button Grid.Column="1" Classes="quiet" Content="Undo" Padding="8,2" IsVisible="{Binding CanUndo}" Command="{Binding UndoCommand}" />
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+					<Button Classes="quiet" Content="Label" Padding="8,2" IsVisible="{Binding CanLabelJustAdded}" Command="{Binding LabelJustAddedCommand}" />
+					<Button Classes="quiet" Content="Undo" Padding="8,2" IsVisible="{Binding CanUndo}" Command="{Binding UndoCommand}" />
+				</StackPanel>
 			</Grid>
 		</StackPanel>
 
@@ -620,16 +623,21 @@
 
 	<!-- Bookmarks and clips saved on the device, plus any on Audible's older annotation server. -->
 	<Grid RowDefinitions="Auto,*" Background="{StaticResource Ink}" IsVisible="{Binding IsAnnotationListOpen}">
-		<Grid ColumnDefinitions="Auto,*" Margin="12,4,24,4">
+		<Grid ColumnDefinitions="Auto,*,Auto" Margin="12,4,16,4">
 			<Button Classes="transport" Width="48" Height="48" Command="{Binding HideAnnotationsCommand}" ToolTip.Tip="Close">
 				<PathIcon Data="{StaticResource IconChevronDown}" />
 			</Button>
-			<TextBlock Grid.Column="1" Classes="bookTitle" Text="Bookmarks and clips" FontSize="22" VerticalAlignment="Center" Margin="4,0,0,0" />
+			<StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,0,0">
+				<TextBlock Classes="bookTitle" Text="Bookmarks and clips" FontSize="20" TextTrimming="CharacterEllipsis" />
+				<TextBlock Classes="muted" Text="{Binding AnnotationSummary}" FontSize="12" TextTrimming="CharacterEllipsis" IsVisible="{Binding HasAnnotations}" />
+			</StackPanel>
+			<Button Grid.Column="2" Classes="quiet" Content="{Binding AnnotationOrderText}" Padding="10,6" VerticalAlignment="Center"
+				Command="{Binding ToggleAnnotationOrderCommand}" IsVisible="{Binding HasAnnotations}" />
 		</Grid>
 		<StackPanel Grid.Row="1" Margin="24,32,24,0" Spacing="10" IsVisible="{Binding !HasAnnotations}">
 			<TextBlock Classes="bookTitle" Text="Nothing saved in this book yet" FontSize="18" />
 			<TextBlock Classes="muted" TextWrapping="Wrap"
-				Text="No bookmarks or clips yet." />
+				Text="Tap the bookmark button while listening to mark the place; Label on the note that follows names it. The clip button saves what you just heard, up to ten minutes." />
 		</StackPanel>
 		<ListBox Grid.Row="1" Classes="chapters" ItemsSource="{Binding Annotations}" Background="Transparent" IsVisible="{Binding HasAnnotations}">
 			<ListBox.ItemTemplate>
@@ -646,6 +654,7 @@
 									<TextBlock Text="{Binding Title}" FontSize="15" TextTrimming="CharacterEllipsis" />
 									<TextBlock Classes="muted" Text="{Binding DetailText}" FontSize="12" TextWrapping="Wrap" />
 									<TextBlock Text="{Binding Note}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,0" IsVisible="{Binding HasNote}" />
+									<TextBlock Classes="muted" Text="{Binding AddedText}" FontSize="11" Margin="0,2,0,0" IsVisible="{Binding HasAdded}" />
 								</StackPanel>
 							</Grid>
 						</Button>
@@ -653,6 +662,8 @@
 							<PathIcon Data="{StaticResource IconMore}" Width="18" Height="18" Foreground="{StaticResource Dust}" />
 							<Button.Flyout>
 								<MenuFlyout Placement="BottomEdgeAlignedRight">
+									<MenuItem Header="Label and note…"
+										Command="{Binding $parent[UserControl].((vm:NowPlayingViewModel)DataContext).EditAnnotationCommand}" CommandParameter="{Binding}" />
 									<MenuItem Header="Delete"
 										Command="{Binding $parent[UserControl].((vm:NowPlayingViewModel)DataContext).DeleteAnnotationCommand}" CommandParameter="{Binding}" />
 								</MenuFlyout>
@@ -663,6 +674,21 @@
 				</DataTemplate>
 			</ListBox.ItemTemplate>
 		</ListBox>
+	</Grid>
+
+	<!-- A bookmark's or clip's label and note. -->
+	<Grid RowDefinitions="Auto,*" Background="{StaticResource Ink}" IsVisible="{Binding IsEditingAnnotation}">
+		<Grid ColumnDefinitions="Auto,*,Auto" Margin="8,4,16,4">
+			<Button Classes="quiet" Content="Cancel" Padding="10,8" Command="{Binding CancelAnnotationEditCommand}" />
+			<TextBlock Grid.Column="1" Classes="bookTitle" Text="Label" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+			<Button Grid.Column="2" Content="Save" Padding="18,8" CornerRadius="16" Command="{Binding SaveAnnotationEditCommand}"
+				Background="{StaticResource Lamp}" Foreground="{StaticResource Ink}" />
+		</Grid>
+		<StackPanel Grid.Row="1" Margin="20,8,20,24" Spacing="10">
+			<TextBlock Classes="muted" Text="{Binding EditingAnnotation.DetailText, FallbackValue=''}" FontSize="13" />
+			<TextBox Text="{Binding EditTitle}" PlaceholderText="Label, such as &quot;Essay quote: the storm&quot;" MaxLength="100" />
+			<TextBox Text="{Binding EditNote}" PlaceholderText="Note (optional)" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="120" MaxLength="2000" />
+		</StackPanel>
 	</Grid>
 
 	<!-- This book's listening history: when and where each session went, to find the place again after dozing off. -->
@@ -750,7 +776,7 @@
 							Playhead="{Binding $parent[UserControl].((vm:NowPlayingViewModel)DataContext).ClipPreviewSeconds}" />
 					</Grid>
 				</Border>
-				<TextBlock Classes="muted" Text="Drag to trim or move. Up to 45 s." FontSize="12" TextWrapping="Wrap" TextAlignment="Center" />
+				<TextBlock Classes="muted" Text="Drag to trim or move, or pick a length below. Up to 10 minutes; Audible's app shows clips of up to 45 s." FontSize="12" TextWrapping="Wrap" TextAlignment="Center" />
 
 				<!-- Fine adjustment, a tenth or half a second at a time. -->
 				<Grid ColumnDefinitions="*,*" ColumnSpacing="12">
@@ -776,11 +802,16 @@
 					</Border>
 				</Grid>
 
-				<StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-					<TextBlock Classes="muted" Text="Last" FontSize="13" VerticalAlignment="Center" />
-					<Button Classes="quiet" Content="15 s" Padding="12,6" Command="{Binding SetLengthCommand}" CommandParameter="15" />
-					<Button Classes="quiet" Content="30 s" Padding="12,6" Command="{Binding SetLengthCommand}" CommandParameter="30" />
-					<Button Classes="quiet" Content="45 s" Padding="12,6" Command="{Binding SetLengthCommand}" CommandParameter="45" />
+				<StackPanel Spacing="6">
+					<TextBlock Classes="muted" Text="The last" FontSize="13" HorizontalAlignment="Center" />
+					<UniformGrid Columns="6">
+						<Button Classes="quiet" Content="15 s" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="15" />
+						<Button Classes="quiet" Content="30 s" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="30" />
+						<Button Classes="quiet" Content="1 m" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="60" />
+						<Button Classes="quiet" Content="2 m" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="120" />
+						<Button Classes="quiet" Content="5 m" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="300" />
+						<Button Classes="quiet" Content="10 m" Padding="4,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Command="{Binding SetLengthCommand}" CommandParameter="600" />
+					</UniformGrid>
 				</StackPanel>
 
 				<StackPanel Spacing="6">

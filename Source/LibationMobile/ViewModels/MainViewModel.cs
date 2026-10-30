@@ -965,6 +965,42 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 			case "log":
 				ShowLog();
 				break;
+			// "annotate:STEP:/path/file.txt": voices the file (no account needed), opens it without playing, and shows a
+			// bookmark screen: "label" the label sheet for a new bookmark, "list" the list, "clip" a two-minute clip.
+			case "annotate" when parts.Length > 2:
+				{
+					var file = action[("annotate:" + parts[1] + ":").Length..];
+					var content = DocumentText.Read(file);
+					var voices = BookVoice.Platform?.Voices() ?? [];
+					var book = voiced.Add(content, file, content.Title ?? "Test", content.Author, voices.First(v => v.Id.StartsWith("espeak")));
+					if (!await LoadVoicedAsync(book, showNowPlaying: true) || NowPlaying is not { } np)
+						break;
+					Console.WriteLine($"LIBATION_TEST annotate: opened, {np.Duration}");
+					np.Seek(TimeSpan.FromSeconds(Math.Min(400, np.Duration.TotalSeconds * 0.8)));
+					np.AddBookmarkCommand.Execute(null);
+					if (parts[1] == "label")
+					{
+						np.LabelJustAddedCommand.Execute(null);
+						np.EditTitle = "Essay quote: the storm";
+					}
+					else if (parts[1] == "list")
+					{
+						np.Seek(TimeSpan.FromSeconds(Math.Min(200, np.Duration.TotalSeconds * 0.4)));
+						np.AddBookmarkCommand.Execute(null);
+						np.LabelJustAddedCommand.Execute(null);
+						np.EditTitle = "Turning point";
+						np.EditNote = "Where the brothers argue.";
+						np.SaveAnnotationEditCommand.Execute(null);
+						np.ShowAnnotationsCommand.Execute(null);
+					}
+					else if (parts[1] == "clip")
+					{
+						np.AddClipCommand.Execute(null);
+						np.ClipEditor?.SetLengthCommand.Execute("120");
+					}
+					Console.WriteLine($"LIBATION_TEST annotate: {np.Annotations.Count} rows; {np.AnnotationSummary}; status '{np.StatusMessage}'");
+				}
+				break;
 			// "sharefile:/path" or "savefile:/path": the share sheet, or the Files picker, for a file, named as a book with a colon in its title.
 			case "sharefile" or "savefile" when parts.Length > 1 && Sharing.Platform is { } sharer:
 				{

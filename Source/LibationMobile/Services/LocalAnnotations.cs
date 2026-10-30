@@ -46,6 +46,19 @@ public class LocalAnnotations
 		return annotation;
 	}
 
+	/// <summary>Give a bookmark or clip a new title and note; empty ones are cleared. Returns the changed one, or null if gone.</summary>
+	public LocalAnnotation? Update(string bookId, Guid id, string? title, string? note)
+	{
+		lock (locker)
+		{
+			if (!books.TryGetValue(bookId, out var list) || list.FindIndex(a => a.Id == id) is var i && i < 0)
+				return null;
+			list[i] = list[i] with { Title = title, Note = note };
+			Save();
+			return list[i];
+		}
+	}
+
 	public void Remove(string bookId, Guid id)
 	{
 		lock (locker)
