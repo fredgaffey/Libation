@@ -28,8 +28,27 @@ public class HistorySessionViewModel
 	public string AsleepText { get; } = "";
 	public bool HasAsleep => AsleepText.Length > 0;
 
+	/// <summary>Heard in another app, as the Audible app: only where it started and ended are known, not how it went.</summary>
+	public bool IsElsewhere { get; }
+
+	/// <summary>When it ended, for putting sessions here and elsewhere in order.</summary>
+	public DateTimeOffset SortTime { get; }
+
+	public HistorySessionViewModel(ElsewhereListening elsewhere)
+	{
+		var day = elsewhere.At.ToLocalTime().Date;
+		var dayText = day == DateTime.Today ? "Today" : day == DateTime.Today.AddDays(-1) ? "Yesterday" : day.ToString("ddd d MMM", CultureInfo.CurrentCulture);
+		Header = $"{dayText}, by {elsewhere.At.ToLocalTime():t}";
+		DetailText = $"{NowPlayingViewModel.FormatTime(elsewhere.From)} to {NowPlayingViewModel.FormatTime(elsewhere.To)}, "
+			+ $"{LogEntryViewModel.Describe(elsewhere.To - elsewhere.From)} of the book";
+		IsElsewhere = true;
+		SortTime = elsewhere.At;
+		Points = [new(elsewhere.At, elsewhere.To), new(elsewhere.Since, elsewhere.From)];
+	}
+
 	public HistorySessionViewModel(ListeningSession session, bool isCurrent)
 	{
+		SortTime = session.Started;
 		var day = session.Started.ToLocalTime().Date;
 		var dayText = day == DateTime.Today ? "Today" : day == DateTime.Today.AddDays(-1) ? "Yesterday" : day.ToString("ddd d MMM", CultureInfo.CurrentCulture);
 		var end = isCurrent ? "now" : session.Ended.ToLocalTime().ToString("t", CultureInfo.CurrentCulture);
@@ -105,8 +124,9 @@ public partial class NowPlayingViewModel
 	private void RefreshHistory()
 	{
 		var sessions = ListeningLog.Joined((log?.Sessions ?? []).Where(s => s.BookId == Book.Id && s.Started != sessionStarted), SessionResumeGap)
-			.OrderByDescending(s => s.Started)
-			.Select(s => new HistorySessionViewModel(s, isCurrent: false));
+			.Select(s => new HistorySessionViewModel(s, isCurrent: false))
+			.Concat((log?.Elsewhere ?? []).Where(e => e.BookId == Book.Id).Select(e => new HistorySessionViewModel(e)))
+			.OrderByDescending(s => s.SortTime);
 		History = (CurrentSession() is { } current ? sessions.Prepend(new HistorySessionViewModel(current, isCurrent: true)) : sessions).ToList();
 	}
 

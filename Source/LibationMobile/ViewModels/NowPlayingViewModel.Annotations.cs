@@ -257,6 +257,10 @@ public partial class NowPlayingViewModel
 			return;
 
 		positionBeforeSync = Position;
+		// Ahead of here: the book was listened to elsewhere, as in the Audible app, and its history should say so.
+		if (remote.Position - Position > SyncMinimumDistance)
+			log?.AddElsewhere(new ElsewhereListening(Book.Id, Title, lastHere == DateTimeOffset.MinValue ? remote.Updated : lastHere,
+				remote.Updated, Position, remote.Position));
 		seekSource = "sync";
 		Seek(remote.Position);
 		SavePosition();
@@ -293,6 +297,8 @@ public partial class NowPlayingViewModel
 
 	private void UndoSync()
 	{
+		if (positionBeforeSync < Position)
+			log?.RemoveLastElsewhere(Book.Id);
 		Seek(positionBeforeSync);
 		SavePosition();
 		ShowStatus($"Back at {FormatTime(positionBeforeSync)}.");

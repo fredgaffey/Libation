@@ -62,22 +62,69 @@ public record ListeningSession(
 /// <summary>Where in the book the listener was at a moment in a session.</summary>
 public record ListeningMark(DateTimeOffset At, TimeSpan Position);
 
+/// <summary>
+/// Listening done somewhere else, as in the Audible app, seen when its place was picked up here: how far the book moved,
+/// and between when. How long it took is not known, only that it was heard by <paramref name="At"/>.
+/// </summary>
+/// <param name="Since">When the book was last listened to here; the listening elsewhere came after.</param>
+/// <param name="At">When the place was saved elsewhere.</param>
+public record ElsewhereListening(string BookId, string Title, DateTimeOffset Since, DateTimeOffset At, TimeSpan From, TimeSpan To);
+
 /// <summary>Every listening session on this device, newest last, saved as JSON in the app's data folder.</summary>
 public class ListeningLog
 {
 	private readonly string path;
+	private readonly string elsewherePath;
 	private readonly Lock locker = new();
 	private readonly List<ListeningSession> sessions;
+	private readonly List<ElsewhereListening> elsewhere;
 
 	public ListeningLog(string path)
 	{
 		this.path = path;
-		sessions = Load(path);
+		elsewherePath = Path.Combine(Path.GetDirectoryName(path) ?? "", "listening-elsewhere.json");
+		sessions = Load(path, ListeningLogJsonContext.Default.ListListeningSession);
+		elsewhere = Load(elsewherePath, ListeningLogJsonContext.Default.ListElsewhereListening);
 	}
 
 	public IReadOnlyList<ListeningSession> Sessions
 	{
 		get { lock (locker) return sessions.ToList(); }
+	}
+
+	/// <summary>Listening in other apps, kept apart from <see cref="Sessions"/>, which are this device's own and are timed.</summary>
+	public IReadOnlyList<ElsewhereListening> Elsewhere
+	{
+		get { lock (locker) return elsewhere.ToList(); }
+	}
+
+	public void AddElsewhere(ElsewhereListening listening)
+	{
+		lock (locker)
+		{
+			elsewhere.Add(listening);
+			Save(elsewherePath, elsewhere, ListeningLogJsonContext.Default.ListElsewhereListening);
+		}
+	}
+
+	/// <summary>Take back the latest for a book, as when the jump to the other device's place is undone.</summary>
+	public void RemoveLastElsewhere(string bookId)
+	{
+		lock (locker)
+		{
+			var last = elsewhere.FindLastIndex(e => e.BookId == bookId);
+			if (last < 0)
+				return;
+			elsewhere.RemoveAt(last);
+			Save(elsewherePath, elsewhere, ListeningLogJsonContext.Default.ListElsewhereListening);
+		}
+	}
+
+	private static void Save<T>(string file, List<T> items, System.Text.Json.Serialization.Metadata.JsonTypeInfo<List<T>> info)
+	{
+		var temp = file + ".tmp";
+		File.WriteAllText(temp, JsonSerializer.Serialize(items, info));
+		File.Move(temp, file, overwrite: true);
 	}
 
 	/// <summary>Add a session, or replace the one saved earlier for the same book and start, while it was still going.</summary>
@@ -90,9 +137,7 @@ public class ListeningLog
 				sessions[earlier] = session;
 			else
 				sessions.Add(session);
-			var temp = path + ".tmp";
-			File.WriteAllText(temp, JsonSerializer.Serialize(sessions, ListeningLogJsonContext.Default.ListListeningSession));
-			File.Move(temp, path, overwrite: true);
+			Save(path, sessions, ListeningLogJsonContext.Default.ListListeningSession);
 		}
 	}
 
@@ -133,16 +178,18 @@ public class ListeningLog
 		lock (locker)
 		{
 			sessions.Clear();
+			elsewhere.Clear();
 			File.Delete(path);
+			File.Delete(elsewherePath);
 		}
 	}
 
-	private static List<ListeningSession> Load(string path)
+	private static List<T> Load<T>(string path, System.Text.Json.Serialization.Metadata.JsonTypeInfo<List<T>> info)
 	{
 		try
 		{
 			if (File.Exists(path))
-				return JsonSerializer.Deserialize(File.ReadAllText(path), ListeningLogJsonContext.Default.ListListeningSession) ?? [];
+				return JsonSerializer.Deserialize(File.ReadAllText(path), info) ?? [];
 		}
 		catch (JsonException)
 		{
@@ -153,6 +200,7 @@ public class ListeningLog
 }
 
 [JsonSerializable(typeof(List<ListeningSession>))]
+[JsonSerializable(typeof(List<ElsewhereListening>))]
 internal partial class ListeningLogJsonContext : JsonSerializerContext
 {
 }

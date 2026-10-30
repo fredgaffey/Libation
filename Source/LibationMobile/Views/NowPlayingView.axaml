@@ -676,7 +676,7 @@
 		<StackPanel Grid.Row="1" Margin="24,32,24,0" Spacing="10" IsVisible="{Binding !HasHistory}">
 			<TextBlock Classes="bookTitle" Text="No listening yet" FontSize="18" />
 			<TextBlock Classes="muted" TextWrapping="Wrap"
-				Text="No history yet." />
+				Text="Each time you listen here, the session is noted: when, and where in the book it started and ended, with a place marked every few minutes. Listening in the Audible app shows here too, once this book picks up the place it reached there." />
 		</StackPanel>
 		<ScrollViewer Grid.Row="1" IsVisible="{Binding HasHistory}">
 			<ItemsControl ItemsSource="{Binding History}" Margin="24,4,24,20">
@@ -686,6 +686,7 @@
 							<StackPanel Orientation="Horizontal" Spacing="8">
 								<TextBlock Text="{Binding Header}" FontSize="15" />
 								<TextBlock Text="Listening" FontSize="11" Foreground="{StaticResource Lamp}" VerticalAlignment="Center" IsVisible="{Binding IsCurrent}" />
+								<TextBlock Text="Audible app" FontSize="11" Foreground="{StaticResource Dust}" VerticalAlignment="Center" IsVisible="{Binding IsElsewhere}" />
 							</StackPanel>
 							<TextBlock Classes="muted" Text="{Binding DetailText}" FontSize="12" />
 							<TextBlock Text="{Binding AsleepText}" FontSize="12" Foreground="{StaticResource Lamp}" TextWrapping="Wrap" IsVisible="{Binding HasAsleep}" />
