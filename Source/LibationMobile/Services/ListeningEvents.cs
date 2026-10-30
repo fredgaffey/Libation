@@ -35,6 +35,8 @@ public class ListeningEvents(string dataDirectory)
 {
 	private readonly string path = Path.Combine(dataDirectory, "events.jsonl");
 	private readonly Lock locker = new();
+	/// <summary>UTF-8 without the byte-order mark Encoding.UTF8 writes at a new file's start, which made its first line unreadable.</summary>
+	private static readonly Encoding NoMark = new UTF8Encoding(false);
 
 	public void Add(ListeningEvent e)
 	{
@@ -42,7 +44,7 @@ public class ListeningEvents(string dataDirectory)
 		{
 			var line = JsonSerializer.Serialize(e, ListeningEventsJsonContext.Default.ListeningEvent) + "\n";
 			lock (locker)
-				File.AppendAllText(path, line, Encoding.UTF8);
+				File.AppendAllText(path, line, NoMark);
 		}
 		catch (IOException ex)
 		{
@@ -62,7 +64,7 @@ public class ListeningEvents(string dataDirectory)
 			{
 				try
 				{
-					if (JsonSerializer.Deserialize(line, ListeningEventsJsonContext.Default.ListeningEvent) is { } e)
+					if (JsonSerializer.Deserialize(line.TrimStart('\uFEFF'), ListeningEventsJsonContext.Default.ListeningEvent) is { } e)
 						events.Add(e);
 				}
 				catch (JsonException)
