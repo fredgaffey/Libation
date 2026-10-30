@@ -62,6 +62,8 @@ public record TimeBreakdown(TimeSpan AudibleReal, double AudibleSpeed, AudibleSp
 public record ChartBar(int Index, string Label, string Name, double AudibleHeight, double LibationHeight, string ValueText, bool ShowLabel, bool IsSelected)
 {
 	public double Opacity => IsSelected ? 1 : 0.55;
+	/// <summary>The label, or nothing: an empty label still takes its line, so every bar stands on the same baseline.</summary>
+	public string ShownLabel => ShowLabel ? Label : "";
 }
 
 /// <summary>A book finished, with when, and the book in the library for its cover.</summary>

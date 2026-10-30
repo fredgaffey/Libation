@@ -103,8 +103,7 @@
 								<PathIcon Data="{StaticResource IconChevronDown}" Width="16" Height="16" RenderTransform="rotate(-90deg)" />
 							</Button>
 						</Grid>
-						<!-- Taller than the tallest bar and its label, so a full bar never runs into the day numbers. -->
-						<ItemsControl ItemsSource="{Binding Log.Bars}" Height="164">
+						<ItemsControl ItemsSource="{Binding Log.Bars}" Height="146">
 							<ItemsControl.ItemsPanel>
 								<ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
 							</ItemsControl.ItemsPanel>
@@ -119,8 +118,8 @@
 												<Border Height="{Binding AudibleHeight}" Background="{StaticResource Paper}" CornerRadius="3,3,0,0" />
 											</StackPanel>
 											<!-- Wider than its bar, so two-digit days show in full. -->
-											<TextBlock Grid.Row="1" Classes="muted" Text="{Binding Label}" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center"
-												Margin="-12,4,-12,0" IsVisible="{Binding ShowLabel}" />
+											<TextBlock Grid.Row="1" Classes="muted" Text="{Binding ShownLabel}" FontSize="10" HorizontalAlignment="Center" TextAlignment="Center"
+												Margin="-12,4,-12,0" />
 										</Grid>
 									</Button>
 								</DataTemplate>
