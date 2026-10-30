@@ -41,6 +41,35 @@ public class SyllableCounterTests
 	}
 
 	[TestMethod]
+	public void LongPausesBarelyCountWhenCapped()
+	{
+		// Twenty seconds of speech at 5 a second, eight of silence, as at a chapter break, then twenty more.
+		var speech = Syllables(5, 20);
+		var samples = new float[speech.Length * 2 + RATE * 8];
+		speech.CopyTo(samples, 0);
+		speech.CopyTo(samples, speech.Length + RATE * 8);
+		var counter = new SyllableCounter(RATE, 1);
+		counter.Reset(0);
+		counter.Write(samples);
+		var plain = counter.Rate(TimeSpan.FromMinutes(1), TimeSpan.Zero)!.Value;
+		var capped = counter.Rate(TimeSpan.FromMinutes(1), TimeSpan.Zero, TimeSpan.FromSeconds(1))!.Value;
+		Assert.AreEqual(5 * 40 / 48.0, plain, 0.5, "the silence counts in full without a cap");
+		Assert.AreEqual(5, capped, 0.5, "with a cap, eight seconds of silence count as one");
+	}
+
+	[TestMethod]
+	public void CappedRateMatchesOnSteadySpeech()
+		=> Assert.AreEqual(Rate(Syllables(5, 10)), CappedRate(Syllables(5, 10)), 0.2);
+
+	private static double CappedRate(float[] samples)
+	{
+		var counter = new SyllableCounter(RATE, 1);
+		counter.Reset(0);
+		counter.Write(samples);
+		return counter.Rate(TimeSpan.FromMinutes(1), TimeSpan.Zero, TimeSpan.FromSeconds(1)) ?? double.NaN;
+	}
+
+	[TestMethod]
 	[DataRow(3.0)]
 	[DataRow(5.0)]
 	[DataRow(8.0)]

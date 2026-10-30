@@ -68,6 +68,20 @@ public sealed class AudioFilePlayer : IDisposable
 		}
 	}
 
+	/// <summary>
+	/// As <see cref="SourceSyllablesPerSecond"/>, but with long pauses counted as a second at most, so a chapter break's
+	/// silence does not pull it down. Null until thirty seconds have been decoded since the last seek: steering the speed
+	/// by less than that chased every heading and pause.
+	/// </summary>
+	public double? SourceSpeechRate
+	{
+		get
+		{
+			lock (locker)
+				return syllables.Rate(TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(1));
+		}
+	}
+
 	private readonly Lock locker = new();
 	private readonly SyllableCounter syllables;
 	private readonly IPcmSource source;

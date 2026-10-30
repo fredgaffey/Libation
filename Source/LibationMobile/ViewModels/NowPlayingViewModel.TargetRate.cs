@@ -19,6 +19,17 @@ public partial class NowPlayingViewModel
 
 	private DateTime nextTargetCheck;
 
+	/// <summary>
+	/// The most the speed moves at one check, so a change in the narration eases the speed over half a minute rather
+	/// than throwing it about; a chapter's opening once took it from 6.8x to 8.6x and down to 5x within 25 seconds.
+	/// </summary>
+	private const double TargetRateMaxStep = 0.2;
+
+	/// <summary>After a new chapter begins, the speed is held this long: its title and the pause around it are not narration.</summary>
+	private static readonly TimeSpan ChapterHold = TimeSpan.FromSeconds(20);
+
+	private DateTime chapterStartedAt = DateTime.MinValue;
+
 	public const double MIN_TARGET_RATE = 4;
 	public const double MAX_TARGET_RATE = 40;
 	public static IReadOnlyList<double> TargetRateStops { get; } = [5, 10, 15, 20, 25, 30, 35, 40];
@@ -73,7 +84,8 @@ public partial class NowPlayingViewModel
 		UpdateSpeedChip();
 	}
 
-	private double? HeardRate() => player.SourceSyllablesPerSecond is double rate && rate > 0 ? rate * Speed : null;
+	/// <summary>The rate heard now, by the measure that steers the speed: long pauses count as a second at most.</summary>
+	private double? HeardRate() => player.SourceSpeechRate is double rate && rate > 0 ? rate * Speed : null;
 
 	/// <summary>The listener moved the speed by hand: take the rate now heard as the new target.</summary>
 	private void RetargetRate()
@@ -99,11 +111,15 @@ public partial class NowPlayingViewModel
 		if (!settings.UseTargetSyllableRate || IsTraining || IsTrialRunning)
 			return;
 		nextTargetCheck = DateTime.UtcNow + TargetRateInterval;
-		if (player.SourceSyllablesPerSecond is not double rate || rate < 1)
+		if (!now && DateTime.UtcNow - chapterStartedAt < ChapterHold)
+			return;
+		if (player.SourceSpeechRate is not double rate || rate < 1)
 			return;
 		var wanted = Math.Clamp(settings.TargetSyllableRate / rate, MIN_SPEED, MAX_SPEED);
 		if (Math.Abs(wanted - Speed) < (now ? 0.05 : TargetRateDeadband))
 			return;
+		if (!now)
+			wanted = Speed + Math.Clamp(wanted - Speed, -TargetRateMaxStep, TargetRateMaxStep);
 		speedSource = "rate";
 		ApplySpeed(wanted, save: true);
 		speedSource = "you";

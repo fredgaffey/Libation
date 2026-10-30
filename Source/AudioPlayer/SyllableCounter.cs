@@ -185,6 +185,32 @@ public sealed class SyllableCounter
 		return syllables.Count / span;
 	}
 
+	/// <summary>
+	/// As <see cref="Rate(TimeSpan, TimeSpan)"/>, but a pause longer than <paramref name="longestPause"/> counts only as
+	/// that long. The silence between chapters, or a slow reading of a chapter's title with gaps around it, then barely
+	/// moves the rate, while the short pauses of ordinary narration count in full, so the figure stays on the same scale.
+	/// </summary>
+	public double? Rate(TimeSpan window, TimeSpan minimum, TimeSpan longestPause)
+	{
+		var analysed = (nextFrame - startFrame) / (double)sampleRate;
+		if (analysed < minimum.TotalSeconds)
+			return null;
+		var span = Math.Min(analysed, window.TotalSeconds);
+		var from = nextFrame - (long)(span * sampleRate);
+		while (syllables.Count > 0 && syllables.Peek() < from)
+			syllables.Dequeue();
+		var cap = longestPause.TotalSeconds;
+		var counted = 0.0;
+		var previous = from;
+		foreach (var frame in syllables)
+		{
+			counted += Math.Min(cap, (frame - previous) / (double)sampleRate);
+			previous = frame;
+		}
+		counted += Math.Min(cap, (nextFrame - previous) / (double)sampleRate);
+		return counted > 0 ? syllables.Count / counted : 0;
+	}
+
 	/// <summary>A second-order filter (Robert Bristow-Johnson's cookbook), Butterworth Q.</summary>
 	private sealed class Biquad
 	{

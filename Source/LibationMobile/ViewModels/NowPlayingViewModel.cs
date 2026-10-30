@@ -382,6 +382,7 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 			return;
 
 		CurrentChapterRow = current;
+		chapterStartedAt = DateTime.UtcNow;
 		LogEvent("chapter", detail: current?.Title);
 		for (var i = 0; i < ChapterRows.Count; i++)
 		{
