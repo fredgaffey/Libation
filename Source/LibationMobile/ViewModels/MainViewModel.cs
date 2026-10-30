@@ -965,6 +965,17 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 			case "log":
 				ShowLog();
 				break;
+			// "sharefile:/path" or "savefile:/path": the share sheet, or the Files picker, for a file, named as a book with a colon in its title.
+			case "sharefile" or "savefile" when parts.Length > 1 && Sharing.Platform is { } sharer:
+				{
+					var file = action[(parts[0].Length + 1)..];
+					var name = Sharing.FileName("The Hitchhiker's Guide to the Galaxy: Book 1", Path.GetExtension(file));
+					Console.WriteLine($"LIBATION_TEST {parts[0]}: {file} as '{name}'");
+					await Task.Delay(3000);
+					await (parts[0] == "sharefile" ? sharer.ShareAsync(file, name) : sharer.SaveAsync(file, name));
+					Console.WriteLine($"LIBATION_TEST {parts[0]}: closed");
+				}
+				break;
 			case "settings":
 				ShowSettings();
 				if (parts.Length > 1)

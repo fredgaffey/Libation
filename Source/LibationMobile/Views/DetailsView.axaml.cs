@@ -20,6 +20,13 @@ public partial class DetailsView : UserControl
 		await ShareAsync(details, details.AudioPath, Sharing.FileName(details.Title, Path.GetExtension(details.AudioPath)), "Audio file", "audio/mp4");
 	}
 
+	private async void SaveAudio_Click(object? sender, RoutedEventArgs e)
+	{
+		if (DataContext is not MainViewModel { Details: { } details })
+			return;
+		await ShareAsync(details, details.AudioPath, Sharing.FileName(details.Title, Path.GetExtension(details.AudioPath)), "Audio file", "audio/mp4", save: true);
+	}
+
 	/// <summary>Start, stop or carry on a transcript, or share it once it is finished.</summary>
 	private async void Transcript_Click(object? sender, RoutedEventArgs e)
 	{
@@ -44,13 +51,17 @@ public partial class DetailsView : UserControl
 	}
 
 	/// <summary>The share sheet where there is one; otherwise a copy saved where the listener picks.</summary>
-	private async Task ShareAsync(BookDetailsViewModel details, string path, string name, string kind, string mime)
+	/// <param name="save">Through the file picker, to Files, rather than the share sheet.</param>
+	private async Task ShareAsync(BookDetailsViewModel details, string path, string name, string kind, string mime, bool save = false)
 	{
 		try
 		{
 			if (Sharing.Platform is { } sharer)
 			{
-				await sharer.ShareAsync(path, name);
+				if (save)
+					await sharer.SaveAsync(path, name);
+				else
+					await sharer.ShareAsync(path, name);
 				return;
 			}
 			if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
