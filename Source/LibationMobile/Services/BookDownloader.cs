@@ -21,6 +21,16 @@ public class BookDownloader
 
 	private static readonly HttpClient Http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
+	/// <summary>How long the app's own download may wait for a byte before trying the connection again.</summary>
+	private static readonly TimeSpan ReadStall = TimeSpan.FromSeconds(30);
+	private const int ATTEMPTS = 4;
+
+	/// <summary>
+	/// The system's background downloader stalled once since the app started: it tends to stay stuck until the phone
+	/// restarts, so later downloads go straight to the app's own.
+	/// </summary>
+	private static volatile bool systemDownloaderStalled;
+
 	private readonly LibraryCatalog catalog;
 	private readonly MobileSettings settings;
 
@@ -71,7 +81,7 @@ public class BookDownloader
 		var decrypted = catalog.BookPath(book.Asin) + ".partial";
 
 		var transferred = false;
-		if (FileTransfer.Platform is { } transfer)
+		if (FileTransfer.Platform is { } transfer && !systemDownloaderStalled)
 		{
 			try
 			{
@@ -80,12 +90,14 @@ public class BookDownloader
 			}
 			catch (IOException ex)
 			{
-				// The system's background downloader can be unavailable; download in the app instead, as before.
+				// The system's background downloader can be unavailable or stuck; download in the app instead, as before.
 				Console.WriteLine($"Background download of {book.Asin} failed, downloading in the app: {ex.Message}");
+				if (ex is DownloadStalledException)
+					systemDownloaderStalled = true;
 			}
 		}
 		if (!transferred)
-			await DownloadFileAsync(url, encrypted, p => progress.Report(p * DOWNLOAD_SHARE), token);
+			await DownloadWithRetriesAsync(url, encrypted, p => progress.Report(p * DOWNLOAD_SHARE), token);
 
 		try
 		{
@@ -117,7 +129,7 @@ public class BookDownloader
 	/// Flatten Audible's chapter tree into one list, the way Libation desktop does with its default settings
 	/// (<c>DownloadOptions.flattenChapters</c>, nested titles joined with ": ").
 	/// </summary>
-	private static Mpeg4Lib.ChapterInfo? ToChapterInfo(ChapterInfo? chapterInfo)
+	internal static Mpeg4Lib.ChapterInfo? ToChapterInfo(ChapterInfo? chapterInfo)
 	{
 		var chapters = Flatten(chapterInfo?.Chapters).OrderBy(c => c.StartOffsetMs).ToList();
 		if (chapters.Count == 0)
@@ -158,6 +170,24 @@ public class BookDownloader
 		return flat;
 	}
 
+	/// <summary>A dropped or stalled connection is tried again from where it stopped, a few times, before giving up.</summary>
+	private static async Task DownloadWithRetriesAsync(string url, string path, Action<double> progress, CancellationToken token)
+	{
+		for (var attempt = 1; ; attempt++)
+		{
+			try
+			{
+				await DownloadFileAsync(url, path, progress, token);
+				return;
+			}
+			catch (Exception ex) when (ex is IOException or HttpRequestException && attempt < ATTEMPTS && !token.IsCancellationRequested)
+			{
+				Console.WriteLine($"Download attempt {attempt} failed, trying again: {ex.Message}");
+				await Task.Delay(TimeSpan.FromSeconds(2 * attempt), token);
+			}
+		}
+	}
+
 	/// <summary>
 	/// Download to <paramref name="path"/>, resuming from what is already there. A phone connection can drop
 	/// halfway through a book, and restarting a 500 MB download from zero would be wasteful.
@@ -171,7 +201,10 @@ public class BookDownloader
 		if (existing > 0)
 			request.Headers.Range = new RangeHeaderValue(existing, null);
 
-		using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+		// A connection that goes quiet is given up on, rather than left at the same percentage for ever.
+		using var stall = CancellationTokenSource.CreateLinkedTokenSource(token);
+		stall.CancelAfter(ReadStall);
+		using var response = await StalledAsIOException(Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token), token);
 		if (response.StatusCode == System.Net.HttpStatusCode.RequestedRangeNotSatisfiable)
 		{
 			// Already complete.
@@ -192,12 +225,27 @@ public class BookDownloader
 		var buffer = new byte[BUFFER_SIZE];
 		var written = existing;
 		int read;
-		while ((read = await source.ReadAsync(buffer, token)) > 0)
+		while (true)
 		{
+			stall.CancelAfter(ReadStall);
+			if ((read = await StalledAsIOException(source.ReadAsync(buffer, stall.Token).AsTask(), token)) <= 0)
+				break;
 			await target.WriteAsync(buffer.AsMemory(0, read), token);
 			written += read;
 			if (total > 0)
 				progress((double)written / total);
+		}
+	}
+
+	private static async Task<T> StalledAsIOException<T>(Task<T> task, CancellationToken token)
+	{
+		try
+		{
+			return await task;
+		}
+		catch (OperationCanceledException) when (!token.IsCancellationRequested)
+		{
+			throw new IOException("The connection stalled.");
 		}
 	}
 }

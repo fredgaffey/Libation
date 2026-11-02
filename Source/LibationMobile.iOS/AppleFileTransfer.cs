@@ -21,6 +21,13 @@ public sealed class AppleFileTransfer : NSUrlSessionDownloadDelegate, IFileTrans
 	/// <summary>A finished download whose file has been moved into place, waiting for the app to decrypt it.</summary>
 	private static string CompleteMarker(string path) => path + ".complete";
 
+	/// <summary>
+	/// With the app on screen, how long a download may go without a byte before the system's downloader is given up on
+	/// for the app's own. iOS's background downloader can sit at nothing, with no error, until the phone restarts.
+	/// </summary>
+	private static readonly TimeSpan StallLimit = TimeSpan.FromSeconds(30);
+	private static readonly TimeSpan StallCheck = TimeSpan.FromSeconds(5);
+
 	private sealed class Transfer(string path, Action<double> progress)
 	{
 		public string Path { get; } = path;
@@ -70,6 +77,7 @@ public sealed class AppleFileTransfer : NSUrlSessionDownloadDelegate, IFileTrans
 			var task = await FindOrStartAsync(url, path, userAgent);
 			if (task.BytesExpectedToReceive > 0)
 				progress((double)task.BytesReceived / task.BytesExpectedToReceive);
+			_ = WatchForStallAsync(task, transfer, token);
 
 			// A cancel keeps nothing: the person asked for the download to stop.
 			using var registration = token.Register(() =>
@@ -82,13 +90,14 @@ public sealed class AppleFileTransfer : NSUrlSessionDownloadDelegate, IFileTrans
 			{
 				await transfer.Completion.Task;
 			}
-			catch (IOException) when (task.TaskDescription == ResumedDescription(path) && !token.IsCancellationRequested)
+			catch (IOException ex) when (ex is not DownloadStalledException && task.TaskDescription == ResumedDescription(path) && !token.IsCancellationRequested)
 			{
 				// The saved state was refused, often because the link in it has expired: start again with the new link.
 				Console.WriteLine($"Background download could not resume, starting again: {System.IO.Path.GetFileName(path)}");
 				File.Delete(ResumeDataPath(path));
 				var restarted = transfers.AddOrUpdate(path, _ => new Transfer(path, progress), (_, _) => new Transfer(path, progress));
 				var fresh = Start(url, path, userAgent);
+				_ = WatchForStallAsync(fresh, restarted, token);
 				using var freshRegistration = token.Register(() =>
 				{
 					fresh.Cancel();
@@ -102,6 +111,43 @@ public sealed class AppleFileTransfer : NSUrlSessionDownloadDelegate, IFileTrans
 			transfers.TryRemove(path, out _);
 			File.Delete(CompleteMarker(path));
 		}
+	}
+
+	/// <summary>
+	/// Give up on a download that has received nothing for <see cref="StallLimit"/> while the app is on screen, so the
+	/// app downloads it itself. Time in the background does not count: iOS may hold downloads back then.
+	/// </summary>
+	private static async Task WatchForStallAsync(NSUrlSessionDownloadTask task, Transfer transfer, CancellationToken token)
+	{
+		var lastBytes = task.BytesReceived;
+		var quietSince = DateTime.UtcNow;
+		while (!transfer.Completion.Task.IsCompleted && !token.IsCancellationRequested)
+		{
+			await Task.WhenAny(transfer.Completion.Task, Task.Delay(StallCheck, CancellationToken.None));
+			if (transfer.Completion.Task.IsCompleted || token.IsCancellationRequested)
+				return;
+			var bytes = task.BytesReceived;
+			if (bytes != lastBytes || !await IsOnScreenAsync())
+			{
+				lastBytes = bytes;
+				quietSince = DateTime.UtcNow;
+				continue;
+			}
+			if (DateTime.UtcNow - quietSince < StallLimit)
+				continue;
+			Console.WriteLine($"Background download stalled at {bytes} bytes, downloading in the app: {System.IO.Path.GetFileName(transfer.Path)}");
+			transfer.Completion.TrySetException(new DownloadStalledException());
+			task.Cancel();
+			return;
+		}
+	}
+
+	private static Task<bool> IsOnScreenAsync()
+	{
+		var onScreen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		UIApplication.SharedApplication.BeginInvokeOnMainThread(
+			() => onScreen.TrySetResult(UIApplication.SharedApplication.ApplicationState == UIApplicationState.Active));
+		return onScreen.Task;
 	}
 
 	/// <summary>

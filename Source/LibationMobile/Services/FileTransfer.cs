@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +14,9 @@ public interface IFileTransfer
 	/// <param name="progress">Reports 0 to 1.</param>
 	Task DownloadAsync(Uri url, string path, string userAgent, Action<double> progress, CancellationToken token);
 }
+
+/// <summary>The platform's downloader received nothing for too long while the app was on screen.</summary>
+public sealed class DownloadStalledException() : IOException("The system downloader stalled.");
 
 /// <summary>Asks the platform for time to finish work after the app leaves the screen.</summary>
 public interface IBackgroundWork
