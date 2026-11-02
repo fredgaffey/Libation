@@ -3,13 +3,14 @@ using Foundation;
 using LibationMobile.Services;
 using MediaPlayer;
 using System;
+using System.Threading.Tasks;
 using UIKit;
 
 namespace LibationMobile.iOS;
 
 /// <summary>
 /// The lock screen and Control Centre player, and the play, pause and skip buttons on headphones and in cars.
-/// Also pauses when a call or another app takes the audio, and when headphones are unplugged.
+/// Also pauses when a call or another app takes the audio, and plays again after; and pauses when headphones are unplugged.
 /// </summary>
 public sealed class AppleMediaSession : IMediaSession
 {
@@ -38,6 +39,7 @@ public sealed class AppleMediaSession : IMediaSession
 		Handle(commands.TogglePlayPauseCommand, () =>
 		{
 			LastButtonPress = DateTime.UtcNow;
+			resumeGeneration++;
 			// Before a book is loaded, toggling can only mean play.
 			if (TogglePlayPauseRequested is null)
 				RequestPlay();
@@ -81,14 +83,22 @@ public sealed class AppleMediaSession : IMediaSession
 		{
 			if (e.InterruptionType == AVAudioSessionInterruptionType.Began)
 			{
-				wasPlayingWhenInterrupted = isPlaying;
+				// iOS has usually stopped the engine already, and the player may have shown it as paused: what was
+				// last shown is not enough to tell whether the book was playing when the call came.
+				wasPlayingWhenInterrupted = isPlaying || AppleAudioOutput.IsMeantToPlay;
+				Console.WriteLine($"Audio interrupted (playing: {wasPlayingWhenInterrupted})");
+				resumeGeneration++;
+				AppleAudioOutput.Interrupted();
 				PauseRequested?.Invoke();
 			}
-			// After a call or Siri: carry on if it was playing and iOS says resuming is expected.
-			else if (wasPlayingWhenInterrupted && e.Option == AVAudioSessionInterruptionOptions.ShouldResume)
+			else
 			{
+				var resume = e.Option.HasFlag(AVAudioSessionInterruptionOptions.ShouldResume);
+				Console.WriteLine($"Audio interruption ended (was playing: {wasPlayingWhenInterrupted}, should resume: {resume})");
+				// After a call or Siri: carry on if it was playing and iOS says resuming is expected.
+				if (wasPlayingWhenInterrupted && resume)
+					_ = ResumeAfterInterruptionAsync();
 				wasPlayingWhenInterrupted = false;
-				PlayRequested?.Invoke();
 			}
 		});
 		AVAudioSession.Notifications.ObserveRouteChange((_, e) =>
@@ -99,12 +109,37 @@ public sealed class AppleMediaSession : IMediaSession
 		});
 	}
 
+	/// <summary>Counts interruptions and presses, so a resume still trying after a call gives way to anything newer.</summary>
+	private int resumeGeneration;
+
+	/// <summary>
+	/// Play again after a call. The phone app can hold the audio for a moment after the call ends, and taking it back
+	/// then fails, which left the book paused; so try for a few seconds before giving up.
+	/// </summary>
+	private async Task ResumeAfterInterruptionAsync()
+	{
+		var generation = ++resumeGeneration;
+		for (var attempt = 1; attempt <= 10; attempt++)
+		{
+			if (generation != resumeGeneration)
+				return;
+			if (AVAudioSession.SharedInstance().SetActive(true, out var error))
+			{
+				PlayRequested?.Invoke();
+				return;
+			}
+			Console.WriteLine($"Audio not yet back after the interruption (try {attempt}): {error?.LocalizedDescription}");
+			await Task.Delay(TimeSpan.FromMilliseconds(500));
+		}
+	}
+
 	/// <summary>
 	/// Play, or remember to once a book is loaded: when iOS has closed the app, pressing play on the lock screen
 	/// relaunches it, and the press arrives before the last book has been opened.
 	/// </summary>
 	public void RequestPlay()
 	{
+		resumeGeneration++;
 		if (PlayRequested is null)
 			pendingPlay = true;
 		else
@@ -114,6 +149,7 @@ public sealed class AppleMediaSession : IMediaSession
 	/// <summary>Pause, if anything is playing. Also from the home-screen widget.</summary>
 	public void RequestPause()
 	{
+		resumeGeneration++;
 		pendingPlay = false;
 		PauseRequested?.Invoke();
 	}

@@ -24,6 +24,26 @@ public sealed class AppleAudioOutput : IAudioOutput
 	private readonly NSObject routeObserver;
 	/// <summary>Whether playback should be running, so the engine can be restarted when iOS stops it.</summary>
 	private volatile bool wantRunning;
+	/// <summary>The output last started: the one a call or another app interrupts.</summary>
+	private static AppleAudioOutput? current;
+
+	/// <summary>
+	/// Whether the book is meant to be playing. Unlike the engine, which iOS stops itself as a call comes in, often
+	/// before the app hears of the call, this still says the book was playing.
+	/// </summary>
+	public static bool IsMeantToPlay => current?.wantRunning == true;
+
+	/// <summary>
+	/// A call or another app has taken the audio: stop meaning to play, so a route change during the call (to the
+	/// earpiece, or AirPods switching to the call) does not try to start the book again over it.
+	/// </summary>
+	public static void Interrupted()
+	{
+		if (current is not { } output)
+			return;
+		output.wantRunning = false;
+		output.engine.Pause();
+	}
 
 	public bool IsRunning => engine.Running;
 	public int BufferedFrames => buffer.BufferedFrames;
@@ -119,8 +139,17 @@ public sealed class AppleAudioOutput : IAudioOutput
 
 	public void Start()
 	{
+		current = this;
 		wantRunning = true;
-		StartEngine();
+		try
+		{
+			StartEngine();
+		}
+		catch
+		{
+			wantRunning = false;
+			throw;
+		}
 	}
 
 	private void StartEngine()
@@ -144,6 +173,8 @@ public sealed class AppleAudioOutput : IAudioOutput
 	public void Dispose()
 	{
 		wantRunning = false;
+		if (current == this)
+			current = null;
 		NSNotificationCenter.DefaultCenter.RemoveObserver(configurationObserver);
 		routeObserver.Dispose();
 		engine.Stop();

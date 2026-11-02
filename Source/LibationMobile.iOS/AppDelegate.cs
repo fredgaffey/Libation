@@ -53,9 +53,48 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
 		// LIBATION_KOKORO_BENCH=SECONDS[:VOICE]: how fast Kokoro speaks on this device, writing nothing and playing nothing.
 		if (Environment.GetEnvironmentVariable("LIBATION_KOKORO_BENCH") is { Length: > 0 } bench)
 			System.Threading.Tasks.Task.Run(() => Kokoro.KokoroBench.Run(bench));
+		// LIBATION_INTERRUPT_TEST=FILE.m4a: a call coming and going while FILE plays at no volume; the result goes beside FILE.
+		if (Environment.GetEnvironmentVariable("LIBATION_INTERRUPT_TEST") is { Length: > 0 } interruptFile)
+			System.Threading.Tasks.Task.Run(() => InterruptTest(mediaSession, interruptFile));
 #endif
 		return base.CustomizeAppBuilder(builder).WithInterFont();
 	}
+
+#if DEBUG
+	private static async System.Threading.Tasks.Task InterruptTest(AppleMediaSession session, string file)
+	{
+		var report = new System.Text.StringBuilder();
+		try
+		{
+			using var player = new AudioPlayer.AudioFilePlayer(new AppleAudioFileSource(file), AudioBackend.CreateOutput, AudioBackend.CreateStretcher) { Volume = 0 };
+			session.PlayRequested += () => { if (!player.IsPlaying) player.Play(); };
+			session.PauseRequested += () => { if (player.IsPlaying) player.Pause(); };
+			void Interruption(bool began) => NSNotificationCenter.DefaultCenter.PostNotificationName(AVFoundation.AVAudioSession.InterruptionNotification,
+				AVFoundation.AVAudioSession.SharedInstance(), NSDictionary.FromObjectsAndKeys(
+					[NSNumber.FromNUInt(began ? 1u : 0u), NSNumber.FromNUInt(1)],
+					[new NSString("AVAudioSessionInterruptionTypeKey"), new NSString("AVAudioSessionInterruptionOptionKey")]));
+
+			player.Play();
+			await System.Threading.Tasks.Task.Delay(1000);
+			report.AppendLine($"playing before the call: {player.IsPlaying}, at {player.Position}");
+			// As when the player has already shown the stopped engine as paused before the call is heard of.
+			session.Update(player.Position, 1, isPlaying: false);
+			Interruption(began: true);
+			await System.Threading.Tasks.Task.Delay(1000);
+			var heldAt = player.Position;
+			report.AppendLine($"during the call: playing={player.IsPlaying} meantToPlay={AppleAudioOutput.IsMeantToPlay} at {heldAt}");
+			Interruption(began: false);
+			await System.Threading.Tasks.Task.Delay(1500);
+			report.AppendLine($"after the call: playing={player.IsPlaying} at {player.Position} (held at {heldAt})");
+			player.Pause();
+		}
+		catch (Exception ex)
+		{
+			report.AppendLine($"failed: {ex}");
+		}
+		System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(file)!, "interrupt.txt"), report.ToString());
+	}
+#endif
 
 	/// <summary>iOS woke the app because the background download session has news.</summary>
 	[Export("application:handleEventsForBackgroundURLSession:completionHandler:")]
