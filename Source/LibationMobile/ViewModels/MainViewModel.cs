@@ -445,7 +445,7 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 
 	#region Library and playback
 
-	/// <summary>Tapping a title: play it if downloaded, otherwise start downloading it.</summary>
+	/// <summary>Tapping a title: play it if downloaded, start downloading it if not, and stream it while it downloads.</summary>
 	[RelayCommand(AllowConcurrentExecutions = true)]
 	private async Task OpenBook(BookItemViewModel item)
 	{
@@ -456,6 +456,7 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 				_ = Library.DownloadCommand.ExecuteAsync(item);
 				return;
 			case DownloadState.Downloading:
+				await StreamBook(item);
 				return;
 		}
 
@@ -464,6 +465,38 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 		CurrentPage = Page.NowPlaying;
 		if (!NowPlaying!.IsPlaying)
 			NowPlaying.PlayPause();
+	}
+
+	/// <summary>Play a book that is not downloaded, reading it from Audible as it plays.</summary>
+	[RelayCommand(AllowConcurrentExecutions = true)]
+	private async Task StreamBook(BookItemViewModel item)
+	{
+		if (NowPlaying?.Book.Id != item.Book.Asin)
+		{
+			Error = null;
+			NowPlaying?.Dispose();
+			NowPlaying = null;
+			try
+			{
+				NowPlaying = await NowPlayingViewModel.OpenAsync(await Library.ToStreamedBookAsync(item), settings, annotations, localAnnotations, listeningLog);
+			}
+			catch (Exception ex)
+			{
+				Error = $"{item.Title} could not be streamed: {ex.Message}";
+				return;
+			}
+		}
+		CurrentPage = Page.NowPlaying;
+		if (!NowPlaying!.IsPlaying)
+			NowPlaying.PlayPause();
+	}
+
+	/// <summary>Stream the book on the details page.</summary>
+	[RelayCommand]
+	private async Task StreamDetailsBook()
+	{
+		if (Details is not null)
+			await StreamBook(Details.Item);
 	}
 
 	[RelayCommand]
@@ -1016,6 +1049,66 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 					await Task.Delay(3000);
 					await (parts[0] == "sharefile" ? sharer.ShareAsync(file, name) : sharer.SaveAsync(file, name));
 					Console.WriteLine($"LIBATION_TEST {parts[0]}: closed");
+				}
+				break;
+			// "streamdecode:URL|KEY|IV|/path/original.m4a": an encrypted book read from URL as when streaming, decoded (never
+			// played) and compared with the original file, whole and after a seek.
+			case "streamdecode" when parts.Length > 1:
+				{
+					var test = action[(parts[0].Length + 1)..].Split('|');
+					// Also beside the original, as a simulator's output is not always to hand.
+					void Report(string line)
+					{
+						Console.WriteLine($"LIBATION_TEST streamdecode: {line}");
+						File.AppendAllText(Path.Combine(Path.GetDirectoryName(test[3])!, "streamdecode.txt"), line + "\n");
+					}
+					try
+					{
+						var http = await HttpRangeStream.OpenAsync(new Uri(test[0]), "test", _ => Task.FromResult(new Uri(test[0])), default);
+						var stream = await Task.Run(() => DecryptedAudibleStream.Open(http, Convert.FromHexString(test[1]), Convert.FromHexString(test[2])));
+						await Task.Run(() =>
+						{
+							using var streamed = AudioBackend.OpenStream(stream);
+							using var original = AudioBackend.OpenSource(test[3]);
+							Report($"{streamed.GetType().Name} {streamed.SampleRate} Hz x{streamed.Channels}, {streamed.Duration} (original {original.Duration})");
+							var waits = 0;
+							float[] All(AudioPlayer.IPcmSource source, TimeSpan length)
+							{
+								var all = new List<float>();
+								var buffer = new float[4096 * source.Channels];
+								var watch = System.Diagnostics.Stopwatch.StartNew();
+								while (all.Count < length.TotalSeconds * source.SampleRate * source.Channels && watch.Elapsed < TimeSpan.FromSeconds(60))
+								{
+									var read = source.Read(buffer);
+									if (read == 0 && source is AudioPlayer.IWaitingSource { IsWaiting: true })
+									{
+										waits++;
+										System.Threading.Thread.Sleep(20);
+										continue;
+									}
+									if (read == 0)
+										break;
+									all.AddRange(buffer.AsSpan(0, read));
+								}
+								return all.ToArray();
+							}
+							void Compare(string what, float[] a, float[] b)
+							{
+								var worst = 0f;
+								for (var i = 0; i < Math.Min(a.Length, b.Length); i++)
+									worst = Math.Max(worst, Math.Abs(a[i] - b[i]));
+								Report($"{what}: {a.Length} samples streamed, {b.Length} original, largest difference {worst}, waited {waits} times");
+							}
+							Compare("whole", All(streamed, TimeSpan.MaxValue), All(original, TimeSpan.MaxValue));
+							streamed.Seek(TimeSpan.FromSeconds(50));
+							original.Seek(TimeSpan.FromSeconds(50));
+							Compare("after seeking to 50s", All(streamed, TimeSpan.FromSeconds(5)), All(original, TimeSpan.FromSeconds(5)));
+						});
+					}
+					catch (Exception ex)
+					{
+						Report($"failed: {ex}");
+					}
 				}
 				break;
 			case "settings":

@@ -18,15 +18,26 @@ public interface IPcmSource : IDisposable
 	long Seek(TimeSpan position);
 }
 
+/// <summary>A source that can run short for a while without having ended, such as one still arriving over the network.</summary>
+public interface IWaitingSource : IPcmSource
+{
+	/// <summary>The last read came up short because more is still on its way, not because the end was reached.</summary>
+	bool IsWaiting { get; }
+}
+
 /// <summary>
 /// A source made as it plays, such as text being read aloud: it can run short while the next part is made, and its
 /// frames map to the book's timeline through what is being read rather than one to one.
 /// </summary>
-public interface ILiveSource : IPcmSource
+public interface ILiveSource : IWaitingSource
 {
-	/// <summary>The last read came up short because more is still being made, not because the end was reached.</summary>
-	bool IsWaiting { get; }
-
 	/// <summary>The place on the book's timeline of a frame, counted from the frame the last seek returned.</summary>
 	TimeSpan TimeAt(long frame);
+}
+
+/// <summary>An audio file's bytes still arriving, as over the network: whether the part around a time is here yet.</summary>
+public interface IArrivingStream
+{
+	/// <summary>Whether the sound around <paramref name="time"/> can be read without waiting. Asks for it if not.</summary>
+	bool IsReady(TimeSpan time);
 }

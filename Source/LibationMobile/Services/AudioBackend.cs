@@ -1,5 +1,6 @@
 using AudioPlayer;
 using System;
+using System.IO;
 
 namespace LibationMobile.Services;
 
@@ -8,6 +9,9 @@ public static class AudioBackend
 {
 	/// <summary>Opens a downloaded book for decoding. Defaults to SoundFlow's FFmpeg decoder.</summary>
 	public static Func<string, IPcmSource> OpenSource { get; set; } = path => new FFmpegPcmSource(path);
+
+	/// <summary>Opens a book read through a stream, as one played without downloading. The source owns the stream.</summary>
+	public static Func<Stream, IPcmSource> OpenStream { get; set; } = stream => new FFmpegPcmSource(stream);
 
 	/// <summary>Creates the sound output. Null uses <see cref="AudioFilePlayer"/>'s default, SoundFlow.</summary>
 	public static AudioOutputFactory? CreateOutput { get; set; }

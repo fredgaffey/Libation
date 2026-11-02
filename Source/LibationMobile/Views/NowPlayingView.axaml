@@ -136,6 +136,7 @@
 		<StackPanel Grid.Row="2" Spacing="4">
 			<TextBlock Classes="bookTitle" Text="{Binding Title}" FontSize="{Binding TitleFontSize}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
 			<TextBlock Classes="muted" Text="{Binding Author}" FontSize="14" TextTrimming="CharacterEllipsis" />
+			<TextBlock Classes="muted" Text="{Binding StreamText}" FontSize="12" IsVisible="{Binding IsStreamed}" />
 			<!-- Tap the chapter to see them all. -->
 			<Button Classes="row" Background="Transparent" Padding="0,6,0,2" Margin="0,4,0,0" HorizontalAlignment="Stretch"
 				HorizontalContentAlignment="Stretch" IsVisible="{Binding HasChapters}" Command="{Binding ShowChaptersCommand}">

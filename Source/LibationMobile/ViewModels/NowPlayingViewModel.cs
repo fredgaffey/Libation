@@ -47,6 +47,13 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 	private static readonly TimeSpan SaveInterval = TimeSpan.FromSeconds(10);
 
 	public LocalBook Book { get; }
+
+	/// <summary>Played from Audible over the network rather than from a download.</summary>
+	public bool IsStreamed => Book.IsStreamed;
+
+	/// <summary>For a streamed book: that it is, and whether the sound is still on its way.</summary>
+	[ObservableProperty]
+	private string? streamText;
 	public string Title => Book.Title;
 	public string? Author => Book.Author;
 	/// <summary>Long titles step down a size so they fit in two lines rather than crowding the controls.</summary>
@@ -370,6 +377,8 @@ public partial class NowPlayingViewModel : ObservableObject, IDisposable
 		SleepTick();
 		SleepTimerTick();
 		StatusTick();
+		if (Book.IsStreamed)
+			StreamText = IsPlaying && player.IsWaiting ? "Streaming · loading…" : "Streaming from Audible";
 		if (IsPlaying && DateTime.UtcNow - lastSaved > SaveInterval)
 			SavePosition();
 	}

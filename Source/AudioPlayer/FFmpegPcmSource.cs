@@ -27,17 +27,22 @@ public sealed class FFmpegPcmSource : IPcmSource
 	private readonly Stream stream;
 	private readonly ISoundDecoder decoder;
 
-	public FFmpegPcmSource(string path)
+	public FFmpegPcmSource(string path) : this(File.OpenRead(path), path) { }
+
+	/// <summary>Decode from a seekable stream, such as a book played without downloading. The source owns the stream.</summary>
+	public FFmpegPcmSource(Stream stream, string name = "stream")
 	{
-		stream = File.OpenRead(path);
+		this.stream = stream;
 		try
 		{
+			var mpeg4Duration = TryGetMpeg4Duration(stream);
+			stream.Position = 0;
 			// Only the sample format of the hint is used. Channels and sample rate are the file's own.
 			decoder = new FFmpegCodecFactory().TryCreateDecoder(stream, out _, new AudioFormat { Format = SampleFormat.F32 })
-				?? throw new InvalidDataException($"Unsupported audio file: {path}");
+				?? throw new InvalidDataException($"Unsupported audio file: {name}");
 			SampleRate = decoder.SampleRate;
 			Channels = decoder.Channels;
-			Duration = TryGetMpeg4Duration(path) ?? TimeSpan.FromSeconds((double)Math.Max(0, decoder.Length) / Channels / SampleRate);
+			Duration = mpeg4Duration ?? TimeSpan.FromSeconds((double)Math.Max(0, decoder.Length) / Channels / SampleRate);
 		}
 		catch
 		{
@@ -59,11 +64,12 @@ public sealed class FFmpegPcmSource : IPcmSource
 	private static TimeSpan Clamp(TimeSpan value, TimeSpan min, TimeSpan max)
 		=> value < min ? min : value > max ? max : value;
 
-	private static TimeSpan? TryGetMpeg4Duration(string path)
+	private static TimeSpan? TryGetMpeg4Duration(Stream stream)
 	{
 		try
 		{
-			using var mp4 = new Mp4File(path);
+			// Not disposed: that would close the stream, which the decoder reads next.
+			var mp4 = new Mp4File(stream, stream.Length);
 			return mp4.Duration;
 		}
 		catch

@@ -20,6 +20,9 @@ public sealed class AudioFilePlayer : IDisposable
 	public event EventHandler? PlaybackEnded;
 
 	public TimeSpan Duration => source.Duration;
+
+	/// <summary>Playing, but the sound has not arrived yet, as for a book streamed over a slow connection.</summary>
+	public bool IsWaiting => source is IWaitingSource { IsWaiting: true };
 	public bool IsPlaying => output.IsRunning;
 
 	/// <summary>Playback speed, clamped to [<see cref="MIN_SPEED"/>, <see cref="MAX_SPEED"/>].</summary>
@@ -162,8 +165,8 @@ public sealed class AudioFilePlayer : IDisposable
 						syllables.Write(decodeBuffer.AsSpan(0, decoded));
 						sourceFrame += decoded / source.Channels;
 					}
-					else if (source is ILiveSource { IsWaiting: true })
-						break; // Still being made: silence until it is, without ending.
+					else if (source is IWaitingSource { IsWaiting: true })
+						break; // Still being made or fetched: silence until it is, without ending.
 					else
 						sourceEnded = true;
 				}

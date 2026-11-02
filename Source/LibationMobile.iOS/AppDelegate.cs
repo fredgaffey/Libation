@@ -17,6 +17,7 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
 		// iOS plays through Apple's own audio stack: it keeps playing in the background and on the lock screen,
 		// and it works in the simulator, which SoundFlow's native libraries do not.
 		AudioBackend.OpenSource = path => new AppleAudioFileSource(path);
+		AudioBackend.OpenStream = stream => new AppleStreamSource(stream);
 		AudioBackend.CreateOutput = (sampleRate, channels, render) => new AppleAudioOutput(sampleRate, channels, render);
 		var mediaSession = new AppleMediaSession();
 		MediaSession.Platform = mediaSession;
