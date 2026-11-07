@@ -33,6 +33,8 @@ public sealed class AudioFilePlayer : IDisposable
 		{
 			lock (locker)
 				stretcher.Speed = Math.Clamp(value, MIN_SPEED, MAX_SPEED);
+			if (source is IReadsAhead ahead)
+				ahead.Speed = stretcher.Speed;
 		}
 	}
 

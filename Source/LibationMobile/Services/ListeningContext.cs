@@ -34,6 +34,9 @@ public interface IListeningContext
 	/// <summary>When the head last nodded or shook (turned quickly), while watched; null otherwise.</summary>
 	DateTimeOffset? HeadGestured { get; }
 
+	/// <summary>The phone's battery, 0 to 100, and whether it is charging; null where it cannot be read.</summary>
+	(int Percent, bool Charging)? Battery { get; }
+
 	/// <summary>
 	/// Ask for Motion and Fitness, which covers the phone's activity and the headphones' head movement, as the listener
 	/// turns on something that needs it, rather than later, perhaps while asleep. True if allowed.

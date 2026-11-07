@@ -170,7 +170,7 @@
 		<ListBox Grid.Row="4" Name="bookList" Classes="books" ItemsSource="{Binding Library.Books}" SelectionMode="Single" Background="Transparent">
 				<ListBox.ItemTemplate>
 					<DataTemplate x:DataType="vm:BookItemViewModel">
-						<Grid ColumnDefinitions="*,Auto,Auto">
+						<Grid ColumnDefinitions="*,Auto,Auto,Auto">
 							<Button
 								Grid.Column="0"
 								Classes="row"
@@ -203,8 +203,16 @@
 								</Grid>
 							</Button>
 
+							<!-- Not on the phone: play it now, streamed from Audible, without waiting for the download. -->
+							<Button Grid.Column="1" Classes="transport" Width="44" Height="48"
+								IsVisible="{Binding !IsDownloaded}"
+								Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).StreamBookCommand}" CommandParameter="{Binding}"
+								ToolTip.Tip="Play without downloading">
+								<PathIcon Data="{StaticResource IconPlay}" Width="18" Height="18" Margin="2,0,0,0" />
+							</Button>
+
 							<!-- Download marker: download, cancel, or show that the book is on the device. -->
-							<Panel Grid.Column="1" Width="48">
+							<Panel Grid.Column="2" Width="48">
 								<Button Classes="transport" Width="48" Height="48"
 									IsVisible="{Binding IsNotDownloaded}"
 									Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).Library.DownloadCommand}" CommandParameter="{Binding}"
@@ -228,7 +236,7 @@
 							</Panel>
 
 							<!-- Per-book actions, like the Audible app's row menu. -->
-							<Button Grid.Column="2" Classes="transport" Width="40" Height="48" Margin="0,0,4,0" ToolTip.Tip="More">
+							<Button Grid.Column="3" Classes="transport" Width="40" Height="48" Margin="0,0,4,0" ToolTip.Tip="More">
 								<PathIcon Data="{StaticResource IconMore}" Width="18" Height="18" Foreground="{StaticResource Dust}" />
 								<Button.Flyout>
 									<MenuFlyout Placement="BottomEdgeAlignedRight">

@@ -15,6 +15,13 @@ public sealed class BufferedRender : IDisposable
 	private readonly float[] ring;
 	private readonly float[] chunk;
 	private readonly int targetSamples;
+	/// <summary>
+	/// Refilled only once the queue is down to this, and then to the top in one go: a few wakes a second rather than
+	/// one for every short buffer the device takes, so the processor can sleep in between.
+	/// </summary>
+	private readonly int refillSamples;
+	/// <summary>Producer only: filling the queue to the top, after it ran down to <see cref="refillSamples"/>.</summary>
+	private bool refilling;
 	// Running totals in samples: the producer only moves written, the device only moves read.
 	private long written;
 	private long read;
@@ -34,6 +41,7 @@ public sealed class BufferedRender : IDisposable
 		this.channels = channels;
 		chunk = new float[chunkFrames * channels];
 		targetSamples = (int)(ahead.TotalSeconds * sampleRate) * channels;
+		refillSamples = targetSamples / 2;
 		// Room for a full queue after a discard, while the device has yet to skip past the old one.
 		ring = new float[2 * (targetSamples + chunk.Length)];
 		thread = new Thread(Produce) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "Audio render" };
@@ -78,7 +86,8 @@ public sealed class BufferedRender : IDisposable
 			Underruns++;
 
 		Volatile.Write(ref read, readAt + count);
-		wake.Set();
+		if (Queued() <= refillSamples)
+			wake.Set();
 	}
 
 	private void Produce()
@@ -86,9 +95,16 @@ public sealed class BufferedRender : IDisposable
 		while (!disposed)
 		{
 			// Also never past what the device has yet to skip over, or the ring would overwrite what it is reading.
-			if (Queued() >= targetSamples || Volatile.Read(ref written) - Volatile.Read(ref read) > ring.Length - chunk.Length)
+			// Full, or still more than half full: sleep until the device, a discard or disposing wakes it. Paused, the
+			// device reads nothing, so this sleeps until playing again.
+			var queued = Queued();
+			if (queued >= targetSamples || Volatile.Read(ref written) - Volatile.Read(ref read) > ring.Length - chunk.Length)
+				refilling = false;
+			else if (queued <= refillSamples)
+				refilling = true;
+			if (!refilling)
 			{
-				wake.WaitOne(20);
+				wake.WaitOne();
 				continue;
 			}
 

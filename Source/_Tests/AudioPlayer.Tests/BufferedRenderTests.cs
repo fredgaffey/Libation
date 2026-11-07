@@ -37,6 +37,30 @@ public class BufferedRenderTests
 	}
 
 	[TestMethod]
+	public void Rests_while_nothing_is_read_and_refills_only_once_half_is_played()
+	{
+		var renders = 0;
+		using var buffered = new BufferedRender(b => { Interlocked.Increment(ref renders); b.Fill(0.1f); }, RATE, CHANNELS, TimeSpan.FromMilliseconds(400));
+		WaitForFill(buffered, RATE * 2 / 5 - 1024);
+		Thread.Sleep(100);
+		var full = Volatile.Read(ref renders);
+
+		// Paused: the device reads nothing, so nothing more is made.
+		Thread.Sleep(300);
+		Assert.AreEqual(full, Volatile.Read(ref renders), "rendered while nothing was read");
+
+		// A short read leaves it over half full: still resting.
+		buffered.Read(new float[512 * CHANNELS]);
+		Thread.Sleep(100);
+		Assert.AreEqual(full, Volatile.Read(ref renders), "woke for one short read");
+
+		// Down to under half: back to the top.
+		buffered.Read(new float[RATE / 4 * CHANNELS]);
+		WaitForFill(buffered, RATE * 2 / 5 - 1024);
+		Assert.IsTrue(Volatile.Read(ref renders) > full, "did not refill");
+	}
+
+	[TestMethod]
 	public void Reads_come_out_in_order_without_gaps()
 	{
 		var counter = new Counter();

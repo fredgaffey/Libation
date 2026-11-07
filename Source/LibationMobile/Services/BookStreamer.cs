@@ -77,6 +77,8 @@ public sealed class DecryptedAudibleStream : Stream, AudioPlayer.IArrivingStream
 	private const int AES_BLOCK = 16;
 	/// <summary>Fetched ahead of the place playing before it plays, so the decoder never waits on the network.</summary>
 	private const int READY_BYTES = 128 * 1024;
+	/// <summary>Listening fetched ahead: a tunnel or a patch without signal plays through, at whatever speed.</summary>
+	public static readonly TimeSpan ReadAhead = TimeSpan.FromMinutes(15);
 
 	private readonly HttpRangeStream source;
 	/// <summary>Bytes that differ from the encrypted file, outside the audio: the file type and the header.</summary>
@@ -95,6 +97,12 @@ public sealed class DecryptedAudibleStream : Stream, AudioPlayer.IArrivingStream
 	/// <summary>A read is waiting for the network.</summary>
 	public bool IsWaiting => source.IsWaiting;
 
+	/// <summary>The speed playing: <see cref="ReadAhead"/> is that much more of the book.</summary>
+	public float Speed
+	{
+		set => source.ReadAheadBytes = (long)(ReadAhead.TotalSeconds * Math.Max(1, value) * Length / Math.Max(1, Duration.TotalSeconds));
+	}
+
 	private DecryptedAudibleStream(HttpRangeStream source, (long, byte[])[] patches, long[] chunkOffsets, int[] chunkFirstFrame, int[] frameSizes,
 		byte[] key, byte[] iv, TimeSpan duration)
 	{
@@ -107,6 +115,7 @@ public sealed class DecryptedAudibleStream : Stream, AudioPlayer.IArrivingStream
 		aes.Key = key;
 		this.iv = iv;
 		Duration = duration;
+		Speed = 1;
 	}
 
 	/// <summary>Read the encrypted file's header, which only needs its first and header blocks, not the audio.</summary>

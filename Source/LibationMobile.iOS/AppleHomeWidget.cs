@@ -41,6 +41,13 @@ public sealed class AppleHomeWidget : IHomeWidget
 	private readonly AppleMediaSession mediaSession;
 	private readonly ConcurrentDictionary<string, double> pendingSpeeds = new();
 	private State? shown;
+	/// <summary>What the widget was last redrawn from, and counts down from by itself.</summary>
+	private State? drawn;
+	/// <summary>
+	/// Speed alone redraws the widget at most this often: following a target rate moves it every few seconds, and
+	/// each redraw starts the widget's own process.
+	/// </summary>
+	private static readonly TimeSpan SpeedRedrawInterval = TimeSpan.FromMinutes(1);
 	private string? coverBookId;
 
 	public event Action<string, double>? SpeedRequested;
@@ -83,12 +90,16 @@ public sealed class AppleHomeWidget : IHomeWidget
 		}
 
 		// The widget counts down by itself while playing; it only needs redrawing when that would go wrong.
-		var previous = shown;
 		shown = state;
+		var previous = drawn;
 		if (previous is null || previous.BookId != state.BookId || previous.IsPlaying != state.IsPlaying || previous.ChapterTitle != state.ChapterTitle
 			|| previous.SpeedHidden != state.SpeedHidden
-			|| Math.Abs(previous.Speed - state.Speed) > 0.001 || Math.Abs(Predicted(previous, now) - state.RemainingSeconds) > 60)
+			|| Math.Abs(previous.Speed - state.Speed) > 0.001 && now - previous.UpdatedAt >= SpeedRedrawInterval.TotalSeconds
+			|| Math.Abs(Predicted(previous, now) - state.RemainingSeconds) > 60)
+		{
+			drawn = state;
 			Reload();
+		}
 	}
 
 	private static double Predicted(State state, double at)
@@ -194,8 +205,8 @@ public sealed class AppleHomeWidget : IHomeWidget
 				break;
 			case "speed" when command.BookId is string bookId && command.Speed is double speed:
 				// The widget has already drawn this speed; redrawing it again would block its buttons a second time.
-				if (shown?.BookId == bookId)
-					shown = shown with { Speed = speed };
+				if (drawn?.BookId == bookId)
+					drawn = drawn with { Speed = speed };
 				if (SpeedRequested is null)
 					pendingSpeeds[bookId] = speed;
 				else

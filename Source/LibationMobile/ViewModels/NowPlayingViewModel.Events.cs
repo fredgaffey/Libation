@@ -7,7 +7,8 @@ namespace LibationMobile.ViewModels;
 /// The event log for the listener's research (Services/ListeningEvents.cs): play and pause, every speed change and who
 /// made it, skips and seeks, chapters, mode changes, and the audio route when it changes. Nothing is sampled: position
 /// and speed at any moment follow from these events, and the syllable rate at any point is a property of the audio,
-/// measurable from the file at any time. Written as it happens, so nothing runs just to collect it.
+/// measurable from the file at any time. Each event also notes the battery. Written as it happens, so nothing runs just
+/// to collect it.
 /// </summary>
 public partial class NowPlayingViewModel
 {
@@ -25,8 +26,9 @@ public partial class NowPlayingViewModel
 	{
 		NoteTouch(kind, detail);
 		NoteSessionEvent(kind, value);
+		var battery = ListeningContext.Platform?.Battery;
 		Events?.Add(new ListeningEvent(DateTimeOffset.Now, Book.Id, kind, Math.Round(Position.TotalSeconds, 1), Math.Round(Speed, 2),
-			value is double v ? Math.Round(v, 2) : null, detail, AudioBackend.Route?.Invoke(), IsBlindMode));
+			value is double v ? Math.Round(v, 2) : null, detail, AudioBackend.Route?.Invoke(), IsBlindMode, battery?.Percent, battery?.Charging));
 	}
 
 	/// <summary>A speed change, logged with who made it; the next one is the listener's unless said otherwise.</summary>

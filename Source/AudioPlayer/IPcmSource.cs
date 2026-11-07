@@ -35,8 +35,17 @@ public interface ILiveSource : IWaitingSource
 	TimeSpan TimeAt(long frame);
 }
 
+/// <summary>
+/// Fetches ahead of where it plays by listening time rather than by book time, as a stream does: told the speed, it
+/// knows how much of the book that is.
+/// </summary>
+public interface IReadsAhead
+{
+	float Speed { set; }
+}
+
 /// <summary>An audio file's bytes still arriving, as over the network: whether the part around a time is here yet.</summary>
-public interface IArrivingStream
+public interface IArrivingStream : IReadsAhead
 {
 	/// <summary>Whether the sound around <paramref name="time"/> can be read without waiting. Asks for it if not.</summary>
 	bool IsReady(TimeSpan time);

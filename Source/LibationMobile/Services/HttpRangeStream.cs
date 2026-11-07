@@ -11,17 +11,17 @@ using System.Threading.Tasks;
 namespace LibationMobile.Services;
 
 /// <summary>
-/// A file on a web server read as a seekable stream: fetched in blocks with range requests as they are needed, and a
-/// few blocks ahead of the reader so playback does not wait for each one. A read waits until its bytes arrive; a
+/// A file on a web server read as a seekable stream: fetched in blocks with range requests as they are needed, and
+/// <see cref="ReadAheadBytes"/> ahead of the reader so playback does not wait for each one, or for a patch without signal. A read waits until its bytes arrive; a
 /// dropped connection is tried again until it comes back or the stream is closed.
 /// </summary>
 public sealed class HttpRangeStream : Stream
 {
 	public const int BLOCK_SIZE = 256 * 1024;
-	/// <summary>Blocks fetched ahead of the one being read: 2 MB, minutes of audio even at high speed.</summary>
-	private const int READ_AHEAD = 8;
-	/// <summary>Blocks kept in memory, so skipping back replays without fetching again.</summary>
+	/// <summary>Blocks kept behind the one being read, as well as those ahead, so skipping back replays without fetching again.</summary>
 	private const int KEEP = 48;
+	/// <summary>Fetches ahead at once: enough to fill the read-ahead quickly, few enough that a block wanted now is not queued behind them.</summary>
+	private const int AHEAD_IN_FLIGHT = 4;
 
 	private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -35,6 +35,11 @@ public sealed class HttpRangeStream : Stream
 	private readonly CancellationTokenSource closed = new();
 	private long position;
 	private int waiting;
+	/// <summary>Fetches running for blocks ahead of the reader, not yet asked for. Under the lock.</summary>
+	private int aheadInFlight;
+
+	/// <summary>How far ahead of the reader to fetch. Kept in memory, so 15 minutes at 5x is around 80 MB.</summary>
+	public long ReadAheadBytes { get; set; } = 8 * BLOCK_SIZE;
 
 	public override long Length { get; }
 
@@ -100,7 +105,7 @@ public sealed class HttpRangeStream : Stream
 		var end = Math.Min(Length, at + count);
 		var ready = true;
 		for (var index = Math.Max(0, at) / BLOCK_SIZE; index * BLOCK_SIZE < end; index++)
-			ready &= Block(index, readAhead: index == at / BLOCK_SIZE).IsCompletedSuccessfully;
+			ready &= Block(index, readAhead: index == Math.Max(0, at) / BLOCK_SIZE).IsCompletedSuccessfully;
 		return ready;
 	}
 
@@ -128,22 +133,30 @@ public sealed class HttpRangeStream : Stream
 	{
 		lock (locker)
 		{
-			var task = Fetch(index);
+			var task = Fetch(index, ahead: false);
+			var aheadBlocks = Math.Max(1, ReadAheadBytes / BLOCK_SIZE);
 			if (readAhead)
-				for (var next = index + 1; next <= index + READ_AHEAD && next * BLOCK_SIZE < Length; next++)
-					Fetch(next);
-			// Least recently used first out, never the ones just asked for.
-			while (recent.Count > KEEP && recent.Last is { } last && (last.Value < index || last.Value > index + READ_AHEAD))
+				for (var next = index + 1; next <= index + aheadBlocks && next * BLOCK_SIZE < Length && aheadInFlight < AHEAD_IN_FLIGHT; next++)
+					if (!blocks.ContainsKey(next))
+						Fetch(next, ahead: true);
+			// Least recently used first out, but never the one asked for or those ahead of it.
+			for (var node = recent.Last; recent.Count > KEEP + aheadBlocks && node is not null;)
 			{
-				blocks.Remove(last.Value);
-				recent.RemoveLast();
+				var older = node.Previous;
+				if (node.Value < index || node.Value > index + aheadBlocks)
+				{
+					blocks.Remove(node.Value);
+					recent.Remove(node);
+				}
+				node = older;
 			}
 			return task;
 		}
 	}
 
 	/// <summary>The block's fetch, started if it is not held. Called holding the lock.</summary>
-	private Task<byte[]> Fetch(long index)
+	/// <param name="ahead">Fetched ahead of the reader, and counted against <see cref="AHEAD_IN_FLIGHT"/>.</param>
+	private Task<byte[]> Fetch(long index, bool ahead)
 	{
 		if (blocks.TryGetValue(index, out var task))
 		{
@@ -151,7 +164,24 @@ public sealed class HttpRangeStream : Stream
 			recent.AddFirst(index);
 			return task;
 		}
-		task = Task.Run(() => FetchAsync(index));
+		if (ahead)
+		{
+			aheadInFlight++;
+			task = Task.Run(async () =>
+			{
+				try
+				{
+					return await FetchAsync(index);
+				}
+				finally
+				{
+					lock (locker)
+						aheadInFlight--;
+				}
+			});
+		}
+		else
+			task = Task.Run(() => FetchAsync(index));
 		blocks[index] = task;
 		recent.AddFirst(index);
 		return task;

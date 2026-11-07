@@ -23,8 +23,10 @@ namespace LibationMobile.Services;
 /// </summary>
 /// <param name="Position">Seconds into the book.</param>
 /// <param name="Route">Where the sound went: "headphones", "bluetooth", "speaker", "car", "airplay".</param>
+/// <param name="Battery">The phone's battery, 0 to 100, when it happened: the drain over an hour of listening follows.</param>
+/// <param name="Charging">Whether the phone was charging then, so those stretches can be left out of the drain.</param>
 public record ListeningEvent(DateTimeOffset At, string BookId, string Kind, double Position, double Speed, double? Value = null,
-	string? Detail = null, string? Route = null, bool Blind = false);
+	string? Detail = null, string? Route = null, bool Blind = false, int? Battery = null, bool? Charging = null);
 
 /// <summary>
 /// The event log: one JSON line per event appended to events.jsonl, so writing never rewrites what came before. A heavy

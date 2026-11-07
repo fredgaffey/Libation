@@ -185,7 +185,7 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 	public Experiments Experiments { get; }
 	public ListeningEvents Events { get; }
 
-	/// <summary>Play the book on the details page, or download it if it is not on the device.</summary>
+	/// <summary>Play the book on the details page: from Audible as it plays, if it is not on the device.</summary>
 	[RelayCommand]
 	private async Task OpenDetailsBook()
 	{
@@ -451,11 +451,8 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 	{
 		switch (item.State)
 		{
-			case DownloadState.NotDownloaded:
-				// Start it and return, so this command is not busy (and every row disabled) for the whole download.
-				_ = Library.DownloadCommand.ExecuteAsync(item);
-				return;
-			case DownloadState.Downloading:
+			// Not on the phone (yet): play it from Audible as it plays. Downloading is the download button's job.
+			case DownloadState.NotDownloaded or DownloadState.Downloading:
 				await StreamBook(item);
 				return;
 		}
@@ -489,14 +486,6 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 		CurrentPage = Page.NowPlaying;
 		if (!NowPlaying!.IsPlaying)
 			NowPlaying.PlayPause();
-	}
-
-	/// <summary>Stream the book on the details page.</summary>
-	[RelayCommand]
-	private async Task StreamDetailsBook()
-	{
-		if (Details is not null)
-			await StreamBook(Details.Item);
 	}
 
 	[RelayCommand]
@@ -997,6 +986,10 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 				break;
 			case "log":
 				ShowLog();
+				break;
+			// "battery:/path/out.txt": what the event log would note about the battery now.
+			case "battery" when parts.Length > 1:
+				File.WriteAllText(action["battery:".Length..], $"{ListeningContext.Platform?.Battery}");
 				break;
 			// "annotate:STEP:/path/file.txt": voices the file (no account needed), opens it without playing, and shows a
 			// bookmark screen: "label" the label sheet for a new bookmark, "list" the list, "clip" a two-minute clip.

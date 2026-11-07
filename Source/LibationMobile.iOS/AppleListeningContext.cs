@@ -5,6 +5,7 @@ using LibationMobile.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace LibationMobile.iOS;
@@ -20,8 +21,16 @@ public sealed class AppleListeningContext : IListeningContext
 	private readonly CMPedometer pedometer = new();
 	private CMHeadphoneMotionManager? head;
 	private CMAttitude? headRest;
-	private DateTimeOffset? headLastMoved;
-	private DateTimeOffset? headGestured;
+	// UTC ticks, 0 for never: written on the motion queue, read on the UI thread.
+	private long headLastMoved;
+	private long headGestured;
+	/// <summary>
+	/// Head readings arrive about 25 times a second for as long as a book plays; handled off the main thread, they
+	/// do not wake the app's UI each time.
+	/// </summary>
+	private readonly NSOperationQueue headQueue = new() { MaxConcurrentOperationCount = 1, Name = "Head movement" };
+
+	private static DateTimeOffset? FromTicks(ref long ticks) => Volatile.Read(ref ticks) is var t and > 0 ? new DateTimeOffset(t, TimeSpan.Zero).ToLocalTime() : null;
 	private readonly HKHealthStore? health = HKHealthStore.IsHealthDataAvailable ? new HKHealthStore() : null;
 	private static readonly HKCategoryType? SleepType = HKCategoryType.Create(HKCategoryTypeIdentifier.SleepAnalysis);
 
@@ -36,9 +45,14 @@ public sealed class AppleListeningContext : IListeningContext
 	/// <summary>Whether head movement may be used at all: the listener's setting.</summary>
 	public bool UseHead { get; set; } = true;
 
-	public DateTimeOffset? HeadLastMoved => head is { DeviceMotionActive: true } ? headLastMoved : null;
+	public DateTimeOffset? HeadLastMoved => head is { DeviceMotionActive: true } ? FromTicks(ref headLastMoved) : null;
 
-	public DateTimeOffset? HeadGestured => head is { DeviceMotionActive: true } ? headGestured : null;
+	public DateTimeOffset? HeadGestured => head is { DeviceMotionActive: true } ? FromTicks(ref headGestured) : null;
+
+	// Battery monitoring is turned on at launch (AppDelegate); without it, iOS reports -1.
+	public (int Percent, bool Charging)? Battery => UIKit.UIDevice.CurrentDevice is { BatteryLevel: >= 0 } device
+		? ((int)Math.Round(device.BatteryLevel * 100), device.BatteryState is UIKit.UIDeviceBatteryState.Charging or UIKit.UIDeviceBatteryState.Full)
+		: null;
 
 	public void WatchHead(bool on)
 	{
@@ -54,14 +68,14 @@ public sealed class AppleListeningContext : IListeningContext
 					return;
 				}
 				headRest = null;
-				headLastMoved = DateTimeOffset.Now;
-				head.StartDeviceMotionUpdates(NSOperationQueue.MainQueue, (motion, error) =>
+				Volatile.Write(ref headLastMoved, DateTime.UtcNow.Ticks);
+				head.StartDeviceMotionUpdates(headQueue, (motion, error) =>
 				{
 					if (motion?.Attitude is not { } attitude)
 						return;
 					var rate = motion.RotationRate;
 					if (Math.Sqrt(rate.x * rate.x + rate.y * rate.y + rate.z * rate.z) > HEAD_GESTURE)
-						headGestured = DateTimeOffset.Now;
+						Volatile.Write(ref headGestured, DateTime.UtcNow.Ticks);
 					if (headRest is null)
 					{
 						headRest = attitude;
@@ -74,7 +88,7 @@ public sealed class AppleListeningContext : IListeningContext
 					turned.MultiplyByInverseOfAttitude(headRest);
 					if (Math.Abs(turned.Roll) > HEAD_MOVED || Math.Abs(turned.Pitch) > HEAD_MOVED || Math.Abs(turned.Yaw) > HEAD_MOVED)
 					{
-						headLastMoved = DateTimeOffset.Now;
+						Volatile.Write(ref headLastMoved, DateTime.UtcNow.Ticks);
 						headRest = attitude;
 					}
 				});

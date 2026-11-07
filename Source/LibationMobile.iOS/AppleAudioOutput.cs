@@ -17,7 +17,8 @@ public sealed class AppleAudioOutput : IAudioOutput
 	private readonly AVAudioSourceNode sourceNode;
 	/// <summary>Decoding and speed change run ahead on their own thread; the real-time callback only copies.</summary>
 	private readonly BufferedRender buffer;
-	private static readonly TimeSpan BufferAhead = TimeSpan.FromMilliseconds(250);
+	/// <summary>Refilled when half is left: 200 ms in hand at worst, as much as the device takes in two of its longest calls.</summary>
+	private static readonly TimeSpan BufferAhead = TimeSpan.FromMilliseconds(400);
 	private readonly int channels;
 	private readonly AVAudioFormat format;
 	private readonly NSObject configurationObserver;

@@ -12,7 +12,7 @@ namespace LibationMobile.iOS;
 /// Apple's own decoder: AudioToolbox asks for bytes at the places it needs and decodes them, seeking sample accurately.
 /// When the bytes have not arrived yet, a read comes back empty and says it is waiting, rather than hold the player up.
 /// </summary>
-public sealed class AppleStreamSource : IWaitingSource
+public sealed class AppleStreamSource : IWaitingSource, IReadsAhead
 {
 	private const int CHUNK_FRAMES = 4096;
 
@@ -27,6 +27,15 @@ public sealed class AppleStreamSource : IWaitingSource
 	private long frame;
 
 	public bool IsWaiting { get; private set; }
+
+	public float Speed
+	{
+		set
+		{
+			if (arriving is not null)
+				arriving.Speed = value;
+		}
+	}
 
 	/// <param name="stream">A seekable MPEG-4 audio stream, which this source then owns.</param>
 	public AppleStreamSource(Stream stream)
