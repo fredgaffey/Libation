@@ -17,10 +17,11 @@ namespace LibationMobile.Services;
 public static class BookStreamer
 {
 	/// <summary>The book, ready to open in the player, reading its sound from Audible as it plays.</summary>
-	public static async Task<LocalBook> OpenAsync(Api api, CatalogBook book, LibraryCatalog catalog, MobileSettings settings, CancellationToken token = default)
+	/// <param name="getApi">Asked again for a new link, so the sign-in is renewed then if it has run out.</param>
+	public static async Task<LocalBook> OpenAsync(Func<Task<Api>> getApi, CatalogBook book, LibraryCatalog catalog, MobileSettings settings, CancellationToken token = default)
 	{
 		var quality = settings.HighQualityDownloads ? DownloadQuality.High : DownloadQuality.Normal;
-		var license = await api.GetDownloadLicenseAsync(book.Asin, quality);
+		var license = await (await getApi()).GetDownloadLicenseAsync(book.Asin, quality);
 		// Needed to report the listening position to Audible, as for a download.
 		if (license.Acr is string acr)
 			settings.SetContentReference(book.Asin, acr);
@@ -31,7 +32,7 @@ public static class BookStreamer
 
 		var http = await HttpRangeStream.OpenAsync(new Uri(url), DeviceRegistrationProfile.Default.DownloadUserAgent, async t =>
 		{
-			var renewed = await api.GetDownloadLicenseAsync(book.Asin, quality);
+			var renewed = await (await getApi()).GetDownloadLicenseAsync(book.Asin, quality);
 			return new Uri(renewed.ContentMetadata?.ContentUrl?.OfflineUrl ?? throw new IOException("Audible did not provide a new link to this book."));
 		}, token);
 		DecryptedAudibleStream audio;

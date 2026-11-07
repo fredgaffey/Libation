@@ -667,7 +667,7 @@ public partial class LibraryViewModel : ObservableObject
 
 	/// <summary>The book played from Audible as it is heard, without downloading it.</summary>
 	public async Task<LocalBook> ToStreamedBookAsync(BookItemViewModel item)
-		=> await BookStreamer.OpenAsync(await account.GetApiAsync(), item.Book, catalog, settings);
+		=> await BookStreamer.OpenAsync(account.GetApiAsync, item.Book, catalog, settings);
 
 	public Task<byte[]?> GetCoverBytesAsync(BookItemViewModel item) => catalog.GetCoverAsync(item.Book);
 
