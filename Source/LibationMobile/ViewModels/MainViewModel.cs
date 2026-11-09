@@ -196,8 +196,15 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 	public bool ShowMiniPlayer => NowPlaying is not null && IsTabPage;
 	public string AccountText => $"Audible {AudibleAccount.DisplayNameOf(settings.RegionName)}";
 
+	/// <summary>
+	/// An account exported from Libation desktop and copied into the app's data folder from the computer (with
+	/// <c>xcrun devicectl device copy to</c>): signed in with at the next start, then deleted.
+	/// </summary>
+	private readonly string accountDrop;
+
 	public MainViewModel(string dataDirectory)
 	{
+		accountDrop = Path.Combine(dataDirectory, "account-import.json");
 		settings = new MobileSettings(Path.Combine(dataDirectory, "settings.json"));
 		account = new AudibleAccount(Path.Combine(dataDirectory, "audible-identity.json"), settings);
 		annotations = new AudibleAnnotations(account, settings);
@@ -267,6 +274,25 @@ public partial class MainViewModel : ObservableObject, ILoginChoiceEager
 
 	public async Task InitializeAsync()
 	{
+		if (File.Exists(accountDrop))
+		{
+			try
+			{
+				await account.ImportAsync(await File.ReadAllTextAsync(accountDrop));
+				OnPropertyChanged(nameof(AccountText));
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"Account import from the computer failed: {ex}");
+				Error = $"The account copied from your computer could not be imported: {ex.Message}";
+			}
+			finally
+			{
+				// Sign-in tokens in plain text: not left lying about, whether or not they worked.
+				File.Delete(accountDrop);
+			}
+		}
+
 		if (!account.IsSignedIn)
 		{
 			CurrentPage = Page.SignIn;
